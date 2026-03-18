@@ -1,0 +1,163 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# PEP 582
+__pypackages__/
+
+# Environments
+.env
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Pixi
+.pixi/
+pixi.lock
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# OS
+.DS_Store
+__MACOSX/
+
+# ============================================
+# Project-specific
+# ============================================
+
+# Recordings and data (large, not for distribution)
+imu_recordings/
+recordings/
+fusion_recordings/
+received_recordings/
+aria_recordings/
+outputdata/
+roshi_demo/
+
+# External model assets (must be downloaded separately)
+assets/
+MHR/assets/
+MHR/assets.zip
+MHR/model/
+MHR/.github/
+MHR/tools/mhr_smpl_conversion/output_dir/
+MHR/mhr/_version.py
+sam-3d-body/checkpoints/
+
+# SMPL body model files (licensed, not for distribution)
+model/
+
+# Model weights and checkpoints
+*.pt
+*.pth
+*.ckpt
+
+# Data files
+*.npy
+*.npz
+
+# Media files
+*.mp4
+
+# Archives
+*.tar
+*.tar.gz
+
+# Logs and outputs
+*.log
+logs/
+lightning_logs/
+results/
+sandbox/
+sandbox*
+debug/
+
+# Local tools
+.sl/
+**/.dist_test
+
+# Removed from repo (local-only)
+camera_calibration/
+
+# Evaluation data (generated, not tracked)
+evaluation/optitrack_gt_data/
+evaluation/egoallo/
+evaluation/imu_egoallo/
+evaluation/imu_tto/
+evaluation/imu_naive/
+evaluation/sam3d/
+evaluation/by_activity/
+evaluation/combined/
+evaluation/viser_captures/

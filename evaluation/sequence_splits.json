@@ -1,0 +1,57 @@
+{
+  "description": "Each dataset contains 2 activity sequences. transition_sec is the time in the original video.mp4 (which includes calibration) where activity 1 ends and activity 2 begins.",
+  "datasets": {
+    "dataset1": {
+      "activity_1": "walk_march_jog_run",
+      "activity_2": "stretch_boxing_bow_wave",
+      "transition_sec": 88
+    },
+    "dataset2": {
+      "activity_1": "stretch_boxing_bow_wave",
+      "activity_2": "jumping-jack_squat_one-leg-squad",
+      "transition_sec": 112
+    },
+    "dataset3": {
+      "activity_1": "jumping-jack_squat_one-leg-squad",
+      "activity_2": "pick-up-box",
+      "transition_sec": 60
+    },
+    "dataset4": {
+      "activity_1": "pick-up-box",
+      "activity_2": "walk-sayhi-walk",
+      "transition_sec": 47
+    },
+    "dataset5": {
+      "activity_1": "walk-sayhi-walk",
+      "activity_2": "pickup-walkaround",
+      "transition_sec": 57
+    },
+    "dataset6": {
+      "activity_1": "pickup-walkaround",
+      "activity_2": "walk/jog-back-and-forth",
+      "transition_sec": 56
+    },
+    "dataset7": {
+      "activity_1": "walk/jog-back-and-forth",
+      "activity_2": "jump-around",
+      "transition_sec": 65
+    },
+    "dataset8": {
+      "activity_1": "jump-around",
+      "activity_2": "sliding",
+      "transition_sec": 66
+    },
+    "dataset9": {
+      "activity_1": "tennis",
+      "transition_sec": -1
+    },
+    "dataset10": {
+      "activity_1": "ball-throwing-catching",
+      "transition_sec": -1
+    },
+    "dataset11": {
+      "activity_1": "sliding",
+      "transition_sec": -1
+    }
+  }
+}
