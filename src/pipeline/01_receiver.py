@@ -29,15 +29,15 @@ from typing import Dict, List, Optional
 
 from zeroconf import ServiceInfo, Zeroconf
 
-_PROJECT_ROOT = Path(__file__).resolve().parent
-_ROSHI_DIR = Path(__file__).resolve().parent / "ROSHI"
+_SRC_DIR = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = _SRC_DIR.parent
 
 # Add paths for local imports
-for p in [str(_PROJECT_ROOT), str(_ROSHI_DIR)]:
+for p in [str(_SRC_DIR), str(_PROJECT_ROOT)]:
     if p not in sys.path:
-        sys.path.append(p)
+        sys.path.insert(0, p)
 
-from imu_reader import IMUDataRecorder
+from hardware.imu_reader import IMUDataRecorder
 from utils.imu_id_mapping import IMU_ID_TO_JOINT
 from utils.session_preparation import prepare_session
 

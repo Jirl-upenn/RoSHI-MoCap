@@ -21,6 +21,15 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import sys
+_SRC_DIR = Path(__file__).resolve().parent.parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+# Also add pipeline/ so relative module import works
+_PIPELINE_DIR = Path(__file__).resolve().parent
+if str(_PIPELINE_DIR) not in sys.path:
+    sys.path.insert(0, str(_PIPELINE_DIR))
+
 import numpy as np
 
 from importlib import import_module

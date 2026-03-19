@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 
-from utils.imu_id_mapping import REQUIRED_TAG_IDS
+from .imu_id_mapping import REQUIRED_TAG_IDS
 
 
 @dataclass(frozen=True)

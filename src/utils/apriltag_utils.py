@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from utils.imu_id_mapping import JOINT_NAMES, JOINT_TO_TAG_ID
+from .imu_id_mapping import JOINT_NAMES, JOINT_TO_TAG_ID
 
 
 # ---------------------------------------------------------------------------

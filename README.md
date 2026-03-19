@@ -15,18 +15,19 @@ We wear **9 IMUs** (pelvis, shoulders, elbows, hips, knees), each with an **Apri
 
 ```
 RoSHI/
-├── 01_receiver.py              # Receive recordings from iOS app + record IMU data
-├── 02_imu_calibration.py       # Compute bone-to-sensor rotation offsets
-├── 03_imu_pose_viewer.py       # IMU-only pose reconstruction and visualization
-├── 04_sync_pipeline.py         # UTC-aligned RGB + calibrated IMU synchronization
-├── 05_mpjae_evaluation.py      # Mean Per-Joint Angle Error evaluation
-│
-├── utils/                      # Core utility modules
-│   ├── imu_id_mapping.py       #   IMU/tag/joint/SMPLX ID mappings (single source of truth)
-│   ├── session_preparation.py  #   Frame extraction, camera.json, AprilTag summary
-│   ├── sync_utils.py           #   Sync pipeline helpers (CSV loaders, trajectory mapping)
-│   ├── apriltag_utils.py       #   AprilTag detection and rotation utilities
-│   └── smpl_utils.py           #   SMPL-X model loading and forward kinematics
+├── src/
+│   ├── pipeline/                   # Core pipeline scripts
+│   │   ├── 01_receiver.py          #   Receive recordings from iOS app + record IMU data
+│   │   ├── 02_imu_calibration.py   #   Compute bone-to-sensor rotation offsets
+│   │   ├── 03_imu_pose_viewer.py   #   IMU-only pose reconstruction and visualization
+│   │   ├── 04_sync_pipeline.py     #   UTC-aligned RGB + calibrated IMU synchronization
+│   │   └── 05_mpjae_evaluation.py  #   Mean Per-Joint Angle Error evaluation
+│   └── utils/                      # Core utility modules
+│       ├── imu_id_mapping.py       #   IMU/tag/joint/SMPLX ID mappings (single source of truth)
+│       ├── session_preparation.py  #   Frame extraction, camera.json, AprilTag summary
+│       ├── sync_utils.py           #   Sync pipeline helpers (CSV loaders, trajectory mapping)
+│       ├── apriltag_utils.py       #   AprilTag detection and rotation utilities
+│       └── smpl_utils.py           #   SMPL-X model loading and forward kinematics
 │
 ├── evaluation/                 # Evaluation scripts and results (see evaluation/README.md)
 │   ├── compute_metrics.py      #   MPJPE, JAE, Recall computation
@@ -56,7 +57,7 @@ RoSHI/
 Receives video + metadata from the [RoSHI iOS App](https://github.com/Jirl-upenn/RoSHI-App) and records IMU data from the ESP32 serial receiver.
 
 ```bash
-python 01_receiver.py --output-dir received_recordings
+python src/pipeline/01_receiver.py --output-dir received_recordings
 ```
 
 The iOS app captures video with camera intrinsics and AprilTag detections embedded in `metadata.json`.
@@ -83,7 +84,7 @@ python MHR/tools/mhr_smpl_conversion/convert_mhr_to_smpl.py \
   --smplx model/smplx/SMPLX_NEUTRAL.npz
 
 # Compute bone-to-sensor offsets
-python 02_imu_calibration.py <session> \
+python src/pipeline/02_imu_calibration.py <session> \
   --smpl-model-path model/smplx/SMPLX_NEUTRAL.npz \
   --output <session>/imu_calibration.json
 ```
@@ -95,7 +96,7 @@ The calibration uses geodesic optimization on SO(3) (Karcher mean by default). F
 Applies calibrated offsets to recorded IMU quaternions and visualizes the reconstructed pose with optional ground truth overlay:
 
 ```bash
-python 03_imu_pose_viewer.py <session> --port 8082
+python src/pipeline/03_imu_pose_viewer.py <session> --port 8082
 ```
 
 ### Step 4: Synchronization (`04_sync_pipeline.py`)
@@ -103,16 +104,10 @@ python 03_imu_pose_viewer.py <session> --port 8082
 Builds a sync folder with UTC-aligned third-person RGB and calibrated IMU rotations:
 
 ```bash
-python 04_sync_pipeline.py <session>
+python src/pipeline/04_sync_pipeline.py <session>
 ```
 
 Output goes to `<session>/sync/`. If an Aria `.vrs` file and MPS trajectory are present, first-person VRS frames are also extracted and aligned.
-
-Visualize the synced data:
-
-```bash
-python visualize_utc_mapped.py <session>/sync
-```
 
 ### Step 5: Evaluation (`05_mpjae_evaluation.py`)
 
