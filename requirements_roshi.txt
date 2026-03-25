@@ -1,0 +1,35 @@
+# RoSHI main pipeline — conda create -n roshi python=3.12
+# Core
+torch>=2.10
+torchvision>=0.22
+numpy>=2.4
+scipy>=1.17
+opencv-python>=4.13
+pillow>=12.1
+pyserial>=3.5
+smplx>=0.1.28
+trimesh>=4.11
+
+# EgoAllo (diffusion-based pose estimation)
+jax[cuda12]>=0.6
+jaxlib>=0.6
+jaxls @ git+https://github.com/brentyi/jaxls.git
+jax_dataclasses>=1.6
+jaxlie>=1.5
+jaxtyping>=0.3
+einops>=0.8
+rotary-embedding-torch>=0.8
+safetensors>=0.7
+tyro>=1.0
+
+# Aria integration
+projectaria-tools>=1.6
+
+# Visualization & utilities
+viser>=1.0
+rerun-sdk>=0.29
+matplotlib>=3.10
+h5py>=3.13
+loguru>=0.7
+tqdm>=4.67
+huggingface_hub>=1.4

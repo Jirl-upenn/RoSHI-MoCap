@@ -1,0 +1,16 @@
+# MHR (Motion and Hand Reconstruction) — conda create -n mhr python=3.12
+# Core
+torch>=2.8
+numpy>=2.4
+scipy>=1.17
+opencv-python>=4.13
+smplx>=0.1.28
+trimesh>=4.11
+
+# Body model
+pymomentum-gpu>=0.1.97
+
+# Utilities
+scikit-learn>=1.8
+pandas>=2.3
+tqdm>=4.67
