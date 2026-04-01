@@ -38,8 +38,8 @@ from evaluation.eval_utils import (
 # ── Method definitions ────────────────────────────────────────────────
 
 METHOD_CONFIG = {
-    "imu_naive": {
-        "dir": Path("evaluation/imu_naive"),
+    "imu_only": {
+        "dir": Path("evaluation/imu_only"),
         "pattern": "{dataset}_imu_only.npz",
         "label": "IMU-only (naive)",
     },
@@ -53,10 +53,10 @@ METHOD_CONFIG = {
         "pattern": "{dataset}_egoallo.npz",
         "label": "EgoAllo",
     },
-    "imu_tto": {
-        "dir": Path("evaluation/imu_tto"),
-        "pattern": "{dataset}_imu_tto.npz",
-        "label": "IMU-TTO (Ours)",
+    "roshi": {
+        "dir": Path("evaluation/roshi"),
+        "pattern": "{dataset}_roshi.npz",
+        "label": "RoSHI (Ours)",
     },
     "sam3d": {
         "dir": Path("evaluation/sam3d"),

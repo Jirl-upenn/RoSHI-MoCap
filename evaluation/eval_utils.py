@@ -29,10 +29,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 ARIA_DIR = Path("aria_recordings")
 RECORDINGS_DIR = Path("received_recordings")
-BAG_DIR = Path("evaluation/optitrack_gt_data/ros_bag")
-FITS_DIR = Path("evaluation/optitrack_gt_data/smplx_fits")
+BAG_DIR = Path("evaluation/optitrack_gt/ros_bag")
+FITS_DIR = Path("evaluation/optitrack_gt")
 CALIB_DIR = Path("camera_calibration")
-OUT_DIR = Path("evaluation/optitrack_gt_data/gifs")
+OUT_DIR = Path("evaluation/optitrack_gt/gifs")
 
 DATASET_TO_ARIA = {f"dataset{i}": f"dataset{i}" for i in range(1, 12)}
 
@@ -231,7 +231,7 @@ def load_optitrack_smplx_fit(
     fit = np.load(fit_path)
     device = torch.device("cpu")
     root = Path(__file__).resolve().parents[1]
-    model_dir = root / "MHR" / "model"
+    model_dir = root / "model"
 
     body_model = smplx_pkg.create(
         str(model_dir), model_type="smplx", gender="neutral", ext="npz",
