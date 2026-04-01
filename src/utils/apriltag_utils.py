@@ -1,7 +1,7 @@
 """
 AprilTag rotation loading and world-alignment estimation.
 
-Shared by 03_imu_pose_viewer.py, 04_sync_pipeline.py, visualize_utc_mapped.py.
+Shared by imu_pose_viewer.py, 03_sync.py, and other pipeline scripts.
 """
 
 from __future__ import annotations

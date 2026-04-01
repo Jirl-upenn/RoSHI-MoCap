@@ -11,9 +11,7 @@ from tqdm.auto import tqdm
 from . import fncsmpl, network
 from .guidance_optimizer_jax import GuidanceMode, do_guidance_optimization
 from .hand_detection_structs import (
-    CorrespondedAriaHandWristPoseDetections,
     CorrespondedAriaHandAllPoseWrtWorld,
-    CorrespondedHamerDetections,
 )
 from .imu_detection_structs import CorrespondedImuReadings
 from .tensor_dataclass import TensorDataclass
@@ -66,8 +64,6 @@ def run_sampling_with_stitching(
     guidance_inner: bool,
     Ts_world_cpf: Float[Tensor, "time 7"],
     floor_z: float,
-    hamer_detections: None | CorrespondedHamerDetections,
-    aria_detections: None | CorrespondedAriaHandWristPoseDetections,
     aria_all_hand_detections: None | CorrespondedAriaHandAllPoseWrtWorld = None,
     imu_readings: None | CorrespondedImuReadings = None,
     num_samples: int = 1,
@@ -191,8 +187,6 @@ def run_sampling_with_stitching(
                 body_model=body_model,
                 guidance_mode=guidance_mode,
                 phase="inner",
-                hamer_detections=hamer_detections,
-                aria_detections=aria_detections,
                 aria_all_hand_detections=aria_all_hand_detections,
                 imu_readings=imu_readings,
                 verbose=guidance_verbose,

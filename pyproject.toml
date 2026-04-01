@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roshi-mocap"
+version = "0.1.0"
+description = "RoSHI: Robust Sparse-sensor Human-body IMU Pose Estimation"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+    # Core
+    "torch>=2.1",
+    "torchvision",
+    "numpy>=2.0",
+    "scipy",
+    "opencv-python",
+    "pillow",
+    "pyserial",
+    "smplx>=0.1.28",
+    "trimesh",
+    # JAX (guidance optimization)
+    "jax[cuda12]>=0.6",
+    "jaxlib>=0.6",
+    "jax_dataclasses>=1.6",
+    "jaxlie>=1.5",
+    "jaxtyping>=0.3",
+    # EgoAllo (diffusion model)
+    "einops>=0.8",
+    "rotary-embedding-torch>=0.8",
+    "safetensors>=0.7",
+    "tyro>=1.0",
+    # Aria integration
+    "projectaria-tools>=1.6",
+    # Visualization & utilities
+    "viser>=1.0",
+    "plyfile",
+    "rerun-sdk>=0.29",
+    "matplotlib",
+    "h5py",
+    "loguru",
+    "tqdm",
+    "huggingface_hub",
+    "typeguard",
+    "accelerate",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

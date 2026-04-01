@@ -21,26 +21,6 @@ Output under recording_dir/sync/:
   - vrs_frames.csv, vrs_color/ (when VRS + trajectory exist)
 """
 
-"""
-TODO:
-Make RGB stream as optional and mark as a arg input in sync_pipeline.py
-"""
-
-"""
-TODO:
-the load_imu_streams_from_csv function in sync_utils.py:
-- maybe it is wrong to load qx, qy, qz, qw from the imu_data.csv file? 
-  Maybe other way to read raw IMU data is better
-  Refer to the visualizer that Luyang wrote. 
-- It is sorted by utc_timestamp_ns regarless of the imu_id. 
-  Maybe sorting with the order with IMU_id would be better?
-  Establish the logic of sorting with IMU_id. 
-"""
-"""
-TODO:
-Create a rotation utils.
-"""
-
 import argparse
 import csv
 import json
@@ -59,52 +39,25 @@ import numpy as np
 from utils.apriltag_utils import (
     load_apriltag_rotations_by_time,
     estimate_world_alignment_from_tags,
+    quaternion_to_matrix_wxyz,
 )
 from utils.imu_id_mapping import JOINT_NAMES, ROSHI_TO_OPTIMIZATION_IMU_ID, ROSHI_IMU_ID_TO_JOINT
 from utils.sync_utils import (
     load_frames_csv,
     load_imu_streams_from_csv,
+    load_calibration,
     load_tracking_to_utc_dict,
     get_nearest_utc_with_error,
     get_sorted_keys_for_dict,
 )
 
-RGB_DEVICE_TRACKING_ERROR_THRESHOLD_US = 200  
+RGB_DEVICE_TRACKING_ERROR_THRESHOLD_US = 200
 
 
 T_R_IMU = np.array(
     [[0.0, -1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, -1.0]],
     dtype=np.float64,
 )
-
-
-def quaternion_to_matrix_wxyz(q: np.ndarray) -> np.ndarray:
-    """
-    Quaternion (w,x,y,z) -> rotation matrix.
-    Uses a standard right-handed active rotation convention.
-    """
-    q = np.asarray(q, dtype=np.float64).reshape(4)
-    w, x, y, z = q
-    n = np.linalg.norm(q)
-    if n <= 0:
-        return np.eye(3, dtype=np.float64)
-    w, x, y, z = (q / n).tolist()
-    return np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ],
-        dtype=np.float64,
-    )
-
-
-def load_calibration(calib_json: Path) -> Dict[str, np.ndarray]:
-    """
-    Load imu_calibration.json (B_R_S for each joint).
-    """
-    data = json.loads(calib_json.read_text())
-    return {name: np.array(j["B_R_S"], dtype=np.float64) for name, j in data.get("joints", {}).items()}
 
 
 def build_calibrated_imu_dict(
@@ -334,7 +287,7 @@ def run_sync(
 
     frame_ids, utc_ns_list, color_paths = load_frames_csv(frames_csv)
     streams = load_imu_streams_from_csv(imu_csv)
-    calib = load_calibration(calib_json)
+    calib, _ = load_calibration(calib_json)
 
     # Compute world alignment using AprilTag detections
     # This aligns each IMU's internal world frame to the pelvis IMU world frame

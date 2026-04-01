@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 
 from .hand_detection_structs import (
-    CorrespondedAriaHandWristPoseDetections,
-    CorrespondedHamerDetections,
     CorrespondedAriaHandAllPoseWrtWorld,
 )
 from .imu_detection_structs import (
@@ -28,7 +26,7 @@ import jaxls
 import numpy as onp
 import torch
 from jax import numpy as jnp
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from torch import Tensor
 
 from . import fncsmpl, fncsmpl_jax, network
@@ -43,10 +41,8 @@ def do_guidance_optimization(
     body_model: fncsmpl.SmplhModel,
     guidance_mode: GuidanceMode,
     phase: Literal["inner", "post"],
-    hamer_detections: None | CorrespondedHamerDetections, # check the input format
-    aria_detections: None | CorrespondedAriaHandWristPoseDetections, # check the input format
     aria_all_hand_detections: None | CorrespondedAriaHandAllPoseWrtWorld,
-    imu_readings: None | CorrespondedImuReadings, # check the input format
+    imu_readings: None | CorrespondedImuReadings,
     verbose: bool,
 ) -> tuple[network.EgoDenoiseTraj, dict]:
     """Run an optimizer to apply foot contact constraints."""
@@ -71,17 +67,9 @@ def do_guidance_optimization(
         hand_rotmats=cast(jax.Array, traj.hand_rotmats.numpy(force=True)),
         contacts=cast(jax.Array, traj.contacts.numpy(force=True)),
         guidance_params=guidance_params,
-        # The hand detections are a torch tensors in a TensorDataclass form. We
-        # use dictionaries to convert to pytrees.
-        hamer_detections=None
-        if hamer_detections is None
-        else hamer_detections.as_nested_dict(numpy=True),
-        aria_detections=None
-        if aria_detections is None
-        else aria_detections.as_nested_dict(numpy=True),
         aria_all_hand_detections=None
         if aria_all_hand_detections is None
-        else aria_all_hand_detections.as_nested_dict(numpy=True), # TODO whether the all hand output is a dict. 
+        else aria_all_hand_detections.as_nested_dict(numpy=True),
         imu_readings=None
         if imu_readings is None
         else imu_readings.as_nested_dict(numpy=True),
@@ -136,9 +124,7 @@ def _optimize_vmapped(
     hand_rotmats: jax.Array,
     contacts: jax.Array,
     guidance_params: JaxGuidanceParams,
-    hamer_detections: dict | None,
-    aria_detections: dict | None,
-    aria_all_hand_detections: dict | None, 
+    aria_all_hand_detections: dict | None,
     imu_readings: dict | None,
     verbose: jdc.Static[bool],
 ) -> tuple[jax.Array, dict]:
@@ -149,8 +135,6 @@ def _optimize_vmapped(
             Ts_world_cpf=Ts_world_cpf,
             body=body,
             guidance_params=guidance_params,
-            hamer_detections=hamer_detections,
-            aria_detections=aria_detections,
             aria_all_hand_detections=aria_all_hand_detections,
             imu_readings=imu_readings,
             verbose=verbose,
@@ -163,77 +147,40 @@ def _optimize_vmapped(
     )
 
 
-# Modes for guidance.
+# Guidance modes for constraint optimization.
 GuidanceMode = Literal[
-    # Foot skating only.
-    "no_hands",
-    # Only use Aria wrist pose.
-    "aria_wrist_only",
-    # Use Aria wrist pose + HaMeR 3D estimates.
-    "aria_hamer",
-    # Use only HaMeR 3D estimates.
-    "hamer_wrist",
-    # Use HaMeR 3D estimates + reprojection.
-    "hamer_reproj2",
-    # Only use Aria all hand.
-    "aria_all_hand",
-    # Only use IMU.
-    "imu_tto",
-    # Use IMU and Aria all hand.
-    "imu_and_all_aria",
-    # Use IMU and Aria wrist pose.
-    "imu_and_aria_wrist",
-    # IMU and Hamer 3D estimates + reprojection.
-    "imu_hamer_reproj2",
-    # Use All information:
-    "imu_hamer_aria_wrist",
+    # Only use IMU sensors.
+    "imu_only",
+    # Use IMU sensors and Aria hand tracking.
+    "imu_aria_hand",
+    # Only use Aria hand tracking.
+    "aria_hand",
 ]
 
 @jdc.pytree_dataclass
 class JaxGuidanceParams:
+    # Body regularization weights.
     prior_quat_weight: float = 1.0
-    prior_pos_weight: float = 5.0 #5.0 control the torso_joint
+    prior_pos_weight: float = 5.0
     body_quat_vel_smoothness_weight: float = 5.0
     body_quat_smoothness_weight: float = 1.0
     body_quat_delta_smoothness_weight: float = 10.0
     skate_weight: float = 30.0
 
-    # Note: this should be quite high. If the hand quaternions aren't
-    # constrained enough the reprojecction loss can get wild.
-    hand_quats: jdc.Static[bool] = True
-    hand_quat_weight = 5.0
-
-    hand_quat_priors: jdc.Static[bool] = True
-    hand_quat_prior_weight = 0.1
-    hand_quat_smoothness_weight = 10.0
-
-    hamer_reproj: jdc.Static[bool] = True
-    hand_reproj_weight: float = 1.0
-
-    hamer_wrist_pose: jdc.Static[bool] = True
-    hamer_abspos_weight: float = 20.0
-    hamer_ori_weight: float = 5.0
-
-    aria_wrists: jdc.Static[bool] = True
-    aria_wrist_pos_weight: float = 50.0
-    aria_wrist_ori_weight: float = 10.0
-
-    # TODO: Change the aria_all_hand:
+    # Aria hand tracking weights.
     aria_all_landmarks: jdc.Static[bool] = True
     aria_all_landmarks_weight: float = 50.0
 
-    # TODO: Change the aria_all_hand:
     aria_all_hand: jdc.Static[bool] = True
     aria_all_wrist_pose_weight: float = 25.0
     aria_all_wrist_ori_weight: float = 5.0
 
-    # TODO Here: add the weight for the imu readings: 
-    # TODO: At the very begginning, make it super large, and then gradually decrease it.
+    # IMU guidance weights.
     imu_readings: jdc.Static[bool] = True
-    imu_local_quat_weight: float = 10.0  #5.0 
-    imu_pelvis_relative_rotation_weight: float = 10.0 #5.0 
-    imu_body_prior_weight: float = 0.1 #0.1
-    # imu_body_smoothness_weight: float = 10.0
+    imu_local_quat_weight: float = 5.0
+    imu_pelvis_relative_rotation_weight: float = 5.0
+    imu_body_prior_weight: float = 0.1
+    imu_body_smoothness_weight: float = 10.0
 
     # Optimization parameters.
     lambda_initial: float = 0.1
@@ -244,285 +191,48 @@ class JaxGuidanceParams:
         mode: GuidanceMode,
         phase: Literal["inner", "post"],
     ) -> JaxGuidanceParams:
-        # TODO: Add IMU mode condition to enable IMU guidance. 
-        if mode == "no_hands":
+        if mode == "imu_only":
             return {
                 "inner": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=False,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=False,
                     aria_all_hand=False,
                     aria_all_landmarks=False,
-                    imu_readings=False,
+                    imu_readings=True,
                     max_iters=5,
                 ),
                 "post": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=False,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=False,
                     aria_all_hand=False,
                     aria_all_landmarks=False,
-                    imu_readings=False,
+                    imu_readings=True,
                     max_iters=20,
                 ),
             }[phase]
-        elif mode == "aria_wrist_only":
+        elif mode == "imu_aria_hand":
             return {
                 "inner": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=5,
-                ),
-                "post": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=20,
-                ),
-            }[phase]
-        elif mode == "aria_hamer":
-            return {
-                "inner": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=5,
-                ),
-                "post": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=20,
-                ),
-            }[phase]
-        elif mode == "hamer_wrist":
-            return {
-                "inner": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    # NOTE: we turn off reprojection during the inner loop optimization.
-                    hamer_reproj=False,
-                    hamer_wrist_pose=True,
-                    aria_wrists=False,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=5,
-                ),
-                "post": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    # Turn on reprojection.
-                    hamer_reproj=False,
-                    hamer_wrist_pose=True,
-                    aria_wrists=False,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=20,
-                ),
-            }[phase]
-        elif mode == "hamer_reproj2":
-            return {
-                "inner": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    # NOTE: we turn off reprojection during the inner loop optimization.
-                    hamer_reproj=False,
-                    hamer_wrist_pose=True,
-                    aria_wrists=False,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=5,
-                ),
-                "post": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    # Turn on reprojection.
-                    hamer_reproj=True,
-                    hamer_wrist_pose=True,
-                    aria_wrists=False,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
-                    max_iters=20,
-                ),
-            }[phase]
-        elif mode == "aria_all_hand":
-            return {
-                "inner": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=False,
                     aria_all_hand=True,
-                    aria_all_landmarks=False,
-                    imu_readings=False,
+                    aria_all_landmarks=True,
+                    imu_readings=True,
                     max_iters=5,
                 ),
                 "post": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=False,
                     aria_all_hand=True,
-                    aria_all_landmarks=False,
+                    aria_all_landmarks=True,
+                    imu_readings=True,
+                    max_iters=20,
+                ),
+            }[phase]
+        elif mode == "aria_hand":
+            return {
+                "inner": JaxGuidanceParams(
+                    aria_all_hand=True,
+                    aria_all_landmarks=True,
                     imu_readings=False,
-                    max_iters=20,
-                ),
-            }[phase]
-        elif mode == "imu_tto":
-            return {
-                    "inner": JaxGuidanceParams(
-                        hand_quats=False,
-                        hand_quat_priors=False, # True is previous version
-                        hamer_reproj=False,
-                        hamer_wrist_pose=False,
-                        aria_wrists=False,
-                        aria_all_hand=False,
-                        aria_all_landmarks=False,
-                        imu_readings=True,
-                        max_iters=5,
-                    ),
-                    "post": JaxGuidanceParams(
-                        hand_quats=False,
-                        hand_quat_priors=False, # True is previous version
-                        hamer_reproj=False,
-                        hamer_wrist_pose=False,
-                        aria_wrists=False,
-                        aria_all_hand=False,
-                        aria_all_landmarks=False,
-                        imu_readings=True,
-                        max_iters=20,
-                    ),
-            }[phase]
-        elif mode == "imu_and_all_aria":
-            return {
-                    "inner": JaxGuidanceParams(
-                        hand_quats=True,
-                        hand_quat_priors=True,
-                        hamer_reproj=False,
-                        hamer_wrist_pose=False,
-                        aria_wrists=False,
-                        aria_all_hand=True,
-                        aria_all_landmarks=False,
-                        imu_readings=True,
-                        max_iters=5,
-                    ),
-                    "post": JaxGuidanceParams(
-                        hand_quats=True,
-                        hand_quat_priors=True,
-                        hamer_reproj=False,
-                        hamer_wrist_pose=False,
-                        aria_wrists=False,
-                        aria_all_hand=True,
-                        aria_all_landmarks=False,
-                        imu_readings=True,
-                        max_iters=20,
-                    ),
-            }[phase]
-        elif mode == "imu_and_aria_wrist":
-            return {
-                "inner": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=True,
                     max_iters=5,
                 ),
                 "post": JaxGuidanceParams(
-                    hand_quats=False,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=True,
-                    max_iters=20,
-                ),
-            }[phase]
-        elif mode == "imu_hamer_reproj2":
-            return {
-                "inner": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    # NOTE: we turn off reprojection during the inner loop optimization.
-                    hamer_reproj=False,
-                    hamer_wrist_pose=True,
-                    aria_wrists=False,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=True,
-                    max_iters=5,
-                ),
-                "post": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    # Turn on reprojection.
-                    hamer_reproj=True,
-                    hamer_wrist_pose=True,
-                    aria_wrists=False,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=True,
-                    max_iters=20,
-                ),
-            }[phase]
-        elif mode == "imu_hamer_aria_wrist":
-            return {
-                "inner": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=True,
-                    max_iters=5,
-                ),
-                "post": JaxGuidanceParams(
-                    hand_quats=True,
-                    hand_quat_priors=True,
-                    hamer_reproj=False,
-                    hamer_wrist_pose=False,
-                    aria_wrists=True,
-                    aria_all_hand=False,
-                    aria_all_landmarks=False,
-                    imu_readings=True,
+                    aria_all_hand=True,
+                    aria_all_landmarks=True,
+                    imu_readings=False,
                     max_iters=20,
                 ),
             }[phase]
@@ -538,8 +248,6 @@ def _optimize(
     hand_rotmats: jax.Array,
     contacts: jax.Array,
     guidance_params: JaxGuidanceParams,
-    hamer_detections: dict | None,
-    aria_detections: dict | None,
     aria_all_hand_detections: dict | None,
     imu_readings: dict | None,
     verbose: bool,
@@ -710,92 +418,6 @@ def _optimize(
             )
         
 
-        # # IMU Left and Right Shoulder Relative Rotation Cost 
-        # @(
-        #     cost_with_args(
-        #         _SmplhBodyPosesVar(readings["indices"][:-1]),
-        #         _SmplhBodyPosesVar(readings["indices"][1:]),
-        #         readings["imu_readings"][:-1],
-        #         readings["imu_readings"][1:],
-        #     )
-        # )
-        # def imu_shoulder_relative_rotation_cost(
-        #     vals: jaxls.VarValues,
-        #     current_frame_from_model: _SmplhBodyPosesVar,
-        #     next_frame_from_model: _SmplhBodyPosesVar,
-        #     current_imu_reading: jax.Array,
-        #     next_imu_reading: jax.Array,
-        # ) -> jax.Array:
-        #     """
-        #     Computes the relative rotation difference between consecutive timestamps
-        #     for left and right shoulder rotations for both frames from model and IMU readings. This captures temporal dynamics.
-        #     """
-        #     # SECTION ONE:  MODEL LOCAL QUATERNIONS
-        #     # Get current and next frame local quaternions
-        #     current_local_quats = vals[current_frame_from_model]  # (21, 4)
-        #     next_local_quats = vals[next_frame_from_model]        # (21, 4)
-        #     # Compute  rotation in ego world frame
-        #     current_posed = do_forward_kinematics(vals, current_frame_from_model,output_frame="world")
-        #     next_posed = do_forward_kinematics(vals, next_frame_from_model,output_frame="world")
-            
-        #     # Deal with left 
-        #     left_shoulder_joint_id = 16 
-        #     left_shoulder_joint_index_in_kinematic_tree = left_shoulder_joint_id - 1
-        #     assert BODY_24_ID2NAME[left_shoulder_joint_id] == "L_shoulder", f"Joint ID {left_shoulder_joint_id} does not correspond to L_shoulder"
-        #     quat_current_left_in_ego_world = current_posed.Ts_world_joint[left_shoulder_joint_index_in_kinematic_tree, :4]
-        #     quat_next_left_in_ego_world = next_posed.Ts_world_joint[left_shoulder_joint_index_in_kinematic_tree, :4]
-        #     quat_current_left_in_ego_world = jaxlie.SO3(quat_current_left_in_ego_world).wxyz
-        #     quat_next_left_in_ego_world = jaxlie.SO3(quat_next_left_in_ego_world).wxyz
-        #     R_next_in_current_from_model_left = jaxlie.SO3(quat_current_left_in_ego_world).inverse() @ jaxlie.SO3(quat_next_left_in_ego_world)
-
-        #     # Deal with right
-        #     right_shoulder_joint_id = 17
-        #     right_shoulder_joint_index_in_kinematic_tree = right_shoulder_joint_id - 1
-        #     assert BODY_24_ID2NAME[right_shoulder_joint_id] == "R_shoulder", f"Joint ID {right_shoulder_joint_id} does not correspond to R_shoulder"
-        #     quat_current_right_in_ego_world = current_posed.Ts_world_joint[right_shoulder_joint_index_in_kinematic_tree, :4]
-        #     quat_next_right_in_ego_world = next_posed.Ts_world_joint[right_shoulder_joint_index_in_kinematic_tree, :4]
-        #     quat_current_right_in_ego_world = jaxlie.SO3(quat_current_right_in_ego_world).wxyz
-        #     quat_next_right_in_ego_world = jaxlie.SO3(quat_next_right_in_ego_world).wxyz
-        #     R_next_in_current_from_model_right = jaxlie.SO3(quat_current_right_in_ego_world).inverse() @ jaxlie.SO3(quat_next_right_in_ego_world)
-            
-        #     # SECTION TWO:  IMU READINGS
-        #     # Left
-        #     left_shoulder_IMU_id = 4
-        #     left_shoulder_IMU_reading_index = IMU_CONFIG[left_shoulder_IMU_id][2]
-        #     assert IMU_CONFIG[left_shoulder_IMU_id][1] == "L_shoulder", f"IMU ID {left_shoulder_IMU_id} does not correspond to L_shoulder"
-        #     assert left_shoulder_IMU_reading_index == left_shoulder_IMU_id - 1, f"IMU ID {left_shoulder_IMU_id} has reading index {left_shoulder_IMU_reading_index} which is not equal to {left_shoulder_IMU_id - 1}"
-        #     # Get left shoulder rotation matrix in SMPL world frame
-        #     R_current_left_in_smpl_world = current_imu_reading[left_shoulder_IMU_reading_index]
-        #     R_next_left_in_smpl_world = next_imu_reading[left_shoulder_IMU_reading_index]
-        #     R_current_left_in_smpl_world = jaxlie.SO3.from_matrix(R_current_left_in_smpl_world).as_matrix()
-        #     R_next_left_in_smpl_world = jaxlie.SO3.from_matrix(R_next_left_in_smpl_world).as_matrix()
-        #     R_next_in_current_IMU_left = jaxlie.SO3.from_matrix(R_current_left_in_smpl_world).inverse() @ jaxlie.SO3.from_matrix(R_next_left_in_smpl_world)
-
-        #     # Right
-        #     right_shoulder_IMU_id = 3
-        #     right_shoulder_IMU_reading_index = IMU_CONFIG[right_shoulder_IMU_id][2]
-        #     assert IMU_CONFIG[right_shoulder_IMU_id][1] == "R_shoulder", f"IMU ID {right_shoulder_IMU_id} does not correspond to R_shoulder"
-        #     assert right_shoulder_IMU_reading_index == right_shoulder_IMU_id - 1, f"IMU ID {right_shoulder_IMU_id} has reading index {right_shoulder_IMU_reading_index} which is not equal to {right_shoulder_IMU_id - 1}"
-        #     # Get right shoulder rotation matrix in SMPL world frame
-        #     R_current_right_in_smpl_world = current_imu_reading[right_shoulder_IMU_reading_index]
-        #     R_next_right_in_smpl_world = next_imu_reading[right_shoulder_IMU_reading_index]
-        #     R_current_right_in_smpl_world = jaxlie.SO3.from_matrix(R_current_right_in_smpl_world).as_matrix()
-        #     R_next_right_in_smpl_world = jaxlie.SO3.from_matrix(R_next_right_in_smpl_world).as_matrix()
-        #     R_next_in_current_IMU_right = jaxlie.SO3.from_matrix(R_current_right_in_smpl_world).inverse() @ jaxlie.SO3.from_matrix(R_next_right_in_smpl_world)
-
-        #     # SECTION THREE: Combine costs
-        #     left_rotation_cost = (R_next_in_current_IMU_left.inverse() @ R_next_in_current_from_model_left).log().flatten()
-        #     right_rotation_cost = (R_next_in_current_IMU_right.inverse() @ R_next_in_current_from_model_right).log().flatten()
-            
-        #     combined_cost = jnp.concatenate([
-        #         left_rotation_cost,
-        #         right_rotation_cost
-        #     ])
-        #     return (
-        #         guidance_params.imu_shoulder_relative_rotation_weight
-        #         * combined_cost
-        #     )
-            
 
         # IMU local quaternion optimization - optimizes relative rotations between parent-child joints
         @(
@@ -844,12 +466,6 @@ def _optimize(
                 joint_id = IMU_CONFIG[imu_id][0]
                 child_joint_index_in_kinematic_tree = joint_id - 1
                 joint_name = IMU_CONFIG[imu_id][1]
-                
-                # # ---- delete this part if you want to process all joints:
-                # # Only process leg joints: L_hip, R_hip, L_knee, R_knee
-                # if joint_name not in ["L_hip", "R_hip", "L_knee", "R_knee"]:
-                #     continue  # Skip non-leg joints
-                # # ---- delete this part if you want to process all joints:
 
                 # get the parent name & the parent rotation in the SMPL world frames & the local quaternion from diffusion model
                 parent_name = JOINT_ID_TO_NAME_AND_PARENT[joint_id][1]["parent"]
@@ -957,44 +573,6 @@ def _optimize(
                 return parent_rot_in_smpl_world, local_quat_in_parent_frame_from_model
 
 
-        # # Spine regulation: penalize spine movements
-        # @cost_with_args(
-        #     _SmplhBodyPosesVar(jnp.arange(timesteps)),
-        # )
-        # def spine_regularization_cost(
-        #     vals: jaxls.VarValues,
-        #     body_pose: _SmplhBodyPosesVar,
-        # ) -> jax.Array:
-        #     """
-        #     Penalize large movements in spine joints to prevent hunchback effect.
-        #     This acts as a regularization term that keeps spine joints close to their initial poses.
-        #     """
-        #     local_quats_from_model_all = vals[body_pose]  # (21, 4)
-
-        #     # Define spine joint indices (spine1, spine2, spine3)
-        #     spine_joint_id = [13, 14, 3, 6, 9]  # Assuming these are the spine indices # , 13, 14 are collar
-        #     assert all(BODY_24_ID2NAME[joint_id] in ["spine1", "spine2", "spine3", "L_collar", "R_collar"] for joint_id in spine_joint_id), f"Spine joint ID {spine_joint_id} not found in BODY_24_ID2NAME"
-        #     spine_joint_indices = [joint_id - 1 for joint_id in spine_joint_id]
-
-        #     # Get initial spine quaternions from the original trajectory
-        #     init_spine_quats = init_quats[body_pose.id, spine_joint_indices, :]  # (3, 4)
-            
-        #     # Get current spine quaternions
-        #     current_spine_quats = local_quats_from_model_all[spine_joint_indices, :]  # (3, 4)
-            
-        #     # Compute quaternion error between current and initial spine poses
-        #     init_spine_so3 = jaxlie.SO3(init_spine_quats)
-        #     # identity_so3 = jaxlie.SO3(jnp.array([1.0, 0.0, 0.0, 0.0]))
-        #     current_spine_so3 = jaxlie.SO3(current_spine_quats)
-            
-        #     return (
-        #         guidance_params.imu_spine_regularization_weight 
-        #         * (current_spine_so3.inverse() @ init_spine_so3)
-        #         .log()
-        #         .flatten()
-        #     )
-        
-
         # IMU body local quaternion smoothness.
         @(
             cost_with_args(
@@ -1033,94 +611,12 @@ def _optimize(
                 .flatten()
             )
 
-    
-    # HaMeR pose cost.
-    if hamer_detections is not None and guidance_params.hand_quat_priors:
-        hamer_left = hamer_detections["detections_left_concat"]
-        hamer_right = hamer_detections["detections_right_concat"]
-
-        # HaMeR local quaternion smoothness.
-        @(
-            cost_with_args(
-                _SmplhSingleHandPosesVar(jnp.arange(timesteps * 2 - 2)),
-                _SmplhSingleHandPosesVar(jnp.arange(2, timesteps * 2)),
-            )
-        )
-        def hand_smoothness(
-            vals: jaxls.VarValues,
-            hand_pose: _SmplhSingleHandPosesVar,
-            hand_pose_next: _SmplhSingleHandPosesVar,
-        ) -> jax.Array:
-            return (
-                guidance_params.hand_quat_smoothness_weight
-                * (
-                    jaxlie.SO3(vals[hand_pose]).inverse()
-                    @ jaxlie.SO3(vals[hand_pose_next])
-                )
-                .log()
-                .flatten()
-            )
-
-        # Hand prior loss.
-        @cost_with_args(
-            _SmplhSingleHandPosesVar(jnp.arange(timesteps * 2)),
-            init_quats[:, 21:51, :].reshape((timesteps * 2, 15, 4)),
-        )
-        def hand_prior(
-            vals: jaxls.VarValues,
-            hand_pose: _SmplhSingleHandPosesVar,
-            init_hand_quats: jax.Array,
-        ) -> jax.Array:
-            return (
-                guidance_params.hand_quat_prior_weight
-                * (jaxlie.SO3(vals[hand_pose]).inverse() @ jaxlie.SO3(init_hand_quats))
-                .log()
-                .flatten()
-            )
-
-    if hamer_detections is not None and guidance_params.hand_quats:
-        hamer_left = hamer_detections["detections_left_concat"]
-        hamer_right = hamer_detections["detections_right_concat"]
-
-        # HaMeR local pose matching.
-        @(
-            cost_with_args(
-                _SmplhSingleHandPosesVar(hamer_left["indices"] * 2),
-                hamer_left["single_hand_quats"],
-            )
-            if hamer_left is not None
-            else lambda x: x
-        )
-        @(
-            cost_with_args(
-                _SmplhSingleHandPosesVar(hamer_right["indices"] * 2 + 1),
-                hamer_right["single_hand_quats"],
-            )
-            if hamer_right is not None
-            else lambda x: x
-        )
-        def hamer_local_pose_cost(
-            vals: jaxls.VarValues,
-            hand_pose: _SmplhSingleHandPosesVar,
-            estimated_hand_quats: jax.Array,
-        ) -> jax.Array:
-            hand_quats = vals[hand_pose]
-            assert hand_quats.shape == estimated_hand_quats.shape
-            return guidance_params.hand_quat_weight * (
-                (jaxlie.SO3(hand_quats).inverse() @ jaxlie.SO3(estimated_hand_quats))
-                .log()
-                .flatten()
-            )
-
+    # Aria hand landmark alignment cost.
     if aria_all_hand_detections is not None and guidance_params.aria_all_landmarks:
         aria_all_left = aria_all_hand_detections["detections_left_concat"]
         aria_all_right = aria_all_hand_detections["detections_right_concat"]
 
         mano_from_openpose_indices = jnp.array([5, 8, 9, 10, 11, 12, 13, 17, 18, 19, 14, 15, 16, 6, 7])
-        # Aria_landmark 3D in world:
-        # We'll get the indices inside the cost function based on left0_right1 parameter
-        # what do you have? 
-        # what did hamer have? 
 
         @(
             cost_with_args(
@@ -1280,277 +776,11 @@ def _optimize(
                 # * alignment_error.flatten() # This is for absolute error.
             )
 
-    if hamer_detections is not None and (
-        guidance_params.hamer_reproj and guidance_params.hamer_wrist_pose
-    ):
-        hamer_left = hamer_detections["detections_left_concat"]
-        hamer_right = hamer_detections["detections_right_concat"]
-
-        # HaMeR reprojection.
-        mano_from_openpose_indices = _get_mano_from_openpose_indices(include_tips=False)
-
-        @(
-            cost_with_args(
-                _SmplhBodyPosesVar(hamer_left["indices"]),
-                _SmplhSingleHandPosesVar(hamer_left["indices"] * 2),
-                _SmplhSingleHandPosesVar(hamer_left["indices"] * 2 + 1),
-                jnp.full_like(hamer_left["indices"], fill_value=0),
-                hamer_left["keypoints_3d"],
-                hamer_left["mano_hand_global_orient"],
-            )
-            if hamer_left is not None
-            else lambda x: x
-        )
-        @(
-            cost_with_args(
-                _SmplhBodyPosesVar(hamer_right["indices"]),
-                _SmplhSingleHandPosesVar(hamer_right["indices"] * 2),
-                _SmplhSingleHandPosesVar(hamer_right["indices"] * 2 + 1),
-                jnp.full_like(hamer_right["indices"], fill_value=1),
-                hamer_right["keypoints_3d"],
-                hamer_right["mano_hand_global_orient"],
-            )
-            if hamer_right is not None
-            else lambda x: x
-        )
-        def hamer_wrist_and_reproj(
-            vals: jaxls.VarValues,
-            body_pose: _SmplhBodyPosesVar,
-            left_hand_pose: _SmplhSingleHandPosesVar,
-            right_hand_pose: _SmplhSingleHandPosesVar,
-            left0_right1: jax.Array,  # Set to 0 for left, 1 for right.
-            keypoints3d_wrt_cam: jax.Array,  # These are in OpenPose order!!
-            Rmat_cam_wrist: jax.Array,
-        ) -> jax.Array:
-            posed = do_forward_kinematics(
-                # The right hand comes _after_ the left hand, we can exclude it.
-                vals,
-                body_pose,
-                left_hand_pose,
-                right_hand_pose,
-                output_frame="root",
-            )
-            Ts_root_joint = posed.Ts_world_joint  # Sorry for the naming...
-            del posed
-
-            # 19 for left wrist, 20 for right wrist.
-            wrist_index = 19 + left0_right1
-            hand_start_index = 21 + 15 * left0_right1
-
-            assert Ts_root_joint.shape == (51, 7)
-            joint_positions_wrt_root = Ts_root_joint[:, 4:7]
-            mano_joints_wrt_root = jnp.concatenate(
-                [
-                    jax.lax.dynamic_slice_in_dim(
-                        joint_positions_wrt_root,
-                        start_index=wrist_index,
-                        slice_size=1,
-                        axis=-2,
-                    ),
-                    jax.lax.dynamic_slice_in_dim(
-                        joint_positions_wrt_root,
-                        start_index=hand_start_index,
-                        slice_size=15,
-                        axis=-2,
-                    ),
-                ],
-                axis=0,
-            )
-            assert mano_joints_wrt_root.shape == (16, 3)
-            assert keypoints3d_wrt_cam.shape == (21, 3)  # In OpenPose.
-
-            T_cam_root = (
-                # T_cam_cpf (7,)
-                jaxlie.SE3(hamer_detections["T_cpf_cam"]).inverse()
-                # T_cpf_head (7,)
-                @ jaxlie.SE3(T_cpf_head)
-                # T_head_root (7,)
-                @ jaxlie.SE3(Ts_root_joint[14, :]).inverse()
-            )
-            assert T_cam_root.parameters().shape == (7,)
-            mano_joints_wrt_cam = T_cam_root @ mano_joints_wrt_root
-            obs_joints_wrt_cam = keypoints3d_wrt_cam[mano_from_openpose_indices, :]
-
-            mano_uv_wrt_cam = mano_joints_wrt_cam[:, :2] / mano_joints_wrt_cam[:, 2:3]
-            obs_uv_wrt_cam = obs_joints_wrt_cam[:, :2] / obs_joints_wrt_cam[:, 2:3]
-
-            T_cam_wrist = jaxlie.SE3.from_rotation_and_translation(
-                T_cam_root.rotation() @ jaxlie.SO3(Ts_root_joint[wrist_index, :4]),
-                mano_joints_wrt_cam[0, :],
-            )
-            obs_T_cam_wrist = jaxlie.SE3.from_rotation_and_translation(
-                jaxlie.SO3.from_matrix(Rmat_cam_wrist),
-                obs_joints_wrt_cam[0, :],
-            )
-
-            return jnp.concatenate(
-                [
-                    (T_cam_wrist.inverse() @ obs_T_cam_wrist).log()
-                    * jnp.array(
-                        [guidance_params.hamer_abspos_weight] * 3
-                        + [guidance_params.hamer_ori_weight] * 3
-                    ),
-                    guidance_params.hand_reproj_weight
-                    * (mano_uv_wrt_cam - obs_uv_wrt_cam).flatten(),
-                ]
-            )
-    elif (
-        hamer_detections is not None
-        and not guidance_params.hamer_reproj
-        and guidance_params.hamer_wrist_pose
-    ):
-        hamer_left = hamer_detections["detections_left_concat"]
-        hamer_right = hamer_detections["detections_right_concat"]
-
-        @(
-            cost_with_args(
-                _SmplhBodyPosesVar(hamer_left["indices"]),
-                jnp.full_like(hamer_left["indices"], fill_value=0),
-                hamer_left["keypoints_3d"],
-                hamer_left["mano_hand_global_orient"],
-            )
-            if hamer_left is not None
-            else lambda x: x
-        )
-        @(
-            cost_with_args(
-                _SmplhBodyPosesVar(hamer_right["indices"]),
-                jnp.full_like(hamer_right["indices"], fill_value=1),
-                hamer_right["keypoints_3d"],
-                hamer_right["mano_hand_global_orient"],
-            )
-            if hamer_right is not None
-            else lambda x: x
-        )
-        def hamer_wrist_only(
-            vals: jaxls.VarValues,
-            body_pose: _SmplhBodyPosesVar,
-            left0_right1: jax.Array,  # Set to 0 for left, 1 for right.
-            keypoints3d_wrt_cam: jax.Array,  # These are in OpenPose order!!
-            Rmat_cam_wrist: jax.Array,
-        ) -> jax.Array:
-            posed = do_forward_kinematics(vals, body_pose, output_frame="root")
-            Ts_root_joint = posed.Ts_world_joint  # Sorry for the naming...
-            del posed
-
-            # 19 for left wrist, 20 for right wrist.
-            wrist_index = 19 + left0_right1
-
-            assert Ts_root_joint.shape == (21, 7)
-            wrist_position_wrt_root = Ts_root_joint[wrist_index, 4:7]
-
-            T_cam_root = (
-                # T_cam_cpf (7,)
-                jaxlie.SE3(hamer_detections["T_cpf_cam"]).inverse()
-                # T_cpf_head (7,)
-                @ jaxlie.SE3(T_cpf_head)
-                # T_head_root (7,)
-                @ jaxlie.SE3(Ts_root_joint[14, :]).inverse()
-            )
-            assert T_cam_root.parameters().shape == (7,)
-            wrist_position_wrt_cam = T_cam_root @ wrist_position_wrt_root
-
-            # Assumes OpenPose root is same as Mano root!!
-            wrist_pos_wrt_cam = keypoints3d_wrt_cam[0, :]
-
-            T_cam_wrist = jaxlie.SE3.from_rotation_and_translation(
-                T_cam_root.rotation() @ jaxlie.SO3(Ts_root_joint[wrist_index, :4]),
-                wrist_position_wrt_cam,
-            )
-            obs_T_cam_wrist = jaxlie.SE3.from_rotation_and_translation(
-                jaxlie.SO3.from_matrix(Rmat_cam_wrist),
-                wrist_pos_wrt_cam,
-            )
-            return (T_cam_wrist.inverse() @ obs_T_cam_wrist).log() * jnp.array(
-                [guidance_params.hamer_abspos_weight] * 3
-                + [guidance_params.hamer_ori_weight] * 3
-            )
-
-    # Wrist pose cost.
-    if aria_detections is not None and guidance_params.aria_wrists:
-        aria_left = aria_detections["detections_left_concat"]
-        aria_right = aria_detections["detections_right_concat"]
-
-        @(
-            cost_with_args(
-                _SmplhBodyPosesVar(aria_left["indices"]),
-                aria_left["confidence"],
-                aria_left["wrist_position"],
-                aria_left["palm_position"],
-                aria_left["palm_normal"],
-                jnp.full_like(aria_left["indices"], fill_value=0),
-            )
-            if aria_left is not None
-            else lambda x: x
-        )
-        @(
-            cost_with_args(
-                _SmplhBodyPosesVar(aria_right["indices"]),
-                aria_right["confidence"],
-                aria_right["wrist_position"],
-                aria_right["palm_position"],
-                aria_right["palm_normal"],
-                jnp.full_like(aria_right["indices"], fill_value=1),
-            )
-            if aria_right is not None
-            else lambda x: x
-        )
-        def wrist_pose_cost(
-            vals: jaxls.VarValues,
-            pose: _SmplhBodyPosesVar,
-            confidence: jax.Array,
-            wrist_position: jax.Array,
-            palm_position: jax.Array,
-            palm_normal: jax.Array,
-            left0_right1: jax.Array,  # Set to 0 for left, 1 for right.
-        ) -> jax.Array:
-            assert wrist_position.shape == (3,)
-            assert left0_right1.shape == ()
-            posed = do_forward_kinematics(vals, pose)
-
-            T_world_wrist = posed.Ts_world_joint[19 + left0_right1]
-
-            pos_cost = (
-                # Left wrist is joint 19, right is joint 20.
-                T_world_wrist[4:7] - wrist_position
-            )
-
-            # Estimate wrist orientation from forward + normal directions.
-            palm_forward = palm_position - wrist_position
-            palm_forward = palm_forward / jnp.linalg.norm(palm_forward)
-            palm_normal = palm_normal / jnp.linalg.norm(palm_normal)
-            palm_forward = (  # Flip palm forward if right hand.
-                palm_forward * jnp.array([1, -1])[left0_right1]
-            )
-            palm_forward = (  # Gram-schmidt for forward direction.
-                palm_forward - jnp.dot(palm_forward, palm_normal) * palm_normal
-            )
-            estimatedR_world_wrist = jaxlie.SO3.from_matrix(
-                jnp.stack(
-                    [
-                        palm_forward,
-                        -palm_normal,
-                        jnp.cross(palm_normal, palm_forward),
-                    ],
-                    axis=1,
-                )
-            )
-            R_world_wrist = jaxlie.SO3(T_world_wrist[:4])
-            ori_cost = (estimatedR_world_wrist.inverse() @ R_world_wrist).log()
-
-            return confidence * jnp.concatenate(
-                [
-                    guidance_params.aria_wrist_pos_weight * pos_cost,
-                    guidance_params.aria_wrist_ori_weight * ori_cost,
-                ]
-            )
-    
-    # All hand pose cost.
+    # Aria all-hand wrist pose cost.
     if aria_all_hand_detections is not None and guidance_params.aria_all_hand:
         aria_all_left = aria_all_hand_detections["detections_left_concat"]
         aria_all_right = aria_all_hand_detections["detections_right_concat"]
-        
-        # 
+
         @(
             cost_with_args(
                 _SmplhBodyPosesVar(aria_all_left["indices"]),
@@ -1761,31 +991,3 @@ def _optimize(
     )
 
 
-# def _get_mano_from_openpose_indices(include_tips: bool) -> Int[onp.ndarray, "21"]:
-#     # https://github.com/geopavlakos/hamer/blob/272d68f176e0ea8a506f761663dd3dca4a03ced0/hamer/models/mano_wrapper.py#L20
-#     # fmt: off
-#     mano_to_openpose = [0, 13, 14, 15, 16, 1, 2, 3, 17, 4, 5, 6, 18, 10, 11, 12, 19, 7, 8, 9, 20]
-#     # fmt: on
-#     openpose_from_mano_idx = {
-#         mano_idx: openpose_idx for openpose_idx, mano_idx in enumerate(mano_to_openpose)
-#     }
-#     return onp.array(
-#         [openpose_from_mano_idx[i] for i in range(21 if include_tips else 16)]
-    # )
-
-
-
-
-def _get_mano_from_openpose_indices(include_tips: bool) -> Int[onp.ndarray, "21"]:
-    # https://github.com/geopavlakos/hamer/blob/272d68f176e0ea8a506f761663dd3dca4a03ced0/hamer/models/mano_wrapper.py#L20
-    # fmt: off
-    # mano_to_openpose = [0, 13, 14, 15, 16, 1, 2, 3, 17, 4, 5, 6, 18, 10, 11, 12, 19, 7, 8, 9, 20]
-    mano_to_aria = [5, 8, 9, 10, 11, 12, 13, 17, 18, 19, 14, 15, 16, 6, 7, 0] #thumb_proximal + wrist
-    # fmt: on
-    aria_from_mano_idx = {
-        mano_idx: openpose_idx for openpose_idx, mano_idx in enumerate(mano_to_aria)
-    }
-    # return np.array(
-    return onp.array(
-        [aria_from_mano_idx[i] for i in range(21 if include_tips else 16)]
-    )

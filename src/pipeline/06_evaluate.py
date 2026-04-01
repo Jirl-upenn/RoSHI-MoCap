@@ -7,9 +7,9 @@ Metric (degrees):
     parent-relative rotations per joint.
 
 Usage:
-  python 05_mpjae_evaluation.py <session_dir>
-  python 05_mpjae_evaluation.py <session_dir> --egoallo-csv path/to/egoallo.csv
-  python 05_mpjae_evaluation.py <session_dir> --tto-csv path/to/tto.csv --csv results.csv
+  python 06_evaluate.py <session_dir>
+  python 06_evaluate.py <session_dir> --egoallo-csv path/to/egoallo.csv
+  python 06_evaluate.py <session_dir> --tto-csv path/to/tto.csv --csv results.csv
 """
 
 from __future__ import annotations
@@ -25,16 +25,16 @@ import sys
 _SRC_DIR = Path(__file__).resolve().parent.parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
-# Also add pipeline/ so relative module import works
-_PIPELINE_DIR = Path(__file__).resolve().parent
-if str(_PIPELINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_PIPELINE_DIR))
+# Also add utils/ so relative module import works
+_UTILS_DIR = _SRC_DIR / "utils"
+if str(_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(_UTILS_DIR))
 
 import numpy as np
 
 from importlib import import_module
 
-_viewer = import_module("03_imu_pose_viewer")
+_viewer = import_module("imu_pose_viewer")
 
 load_imu_csv = _viewer.load_imu_csv
 load_calibration = _viewer.load_calibration

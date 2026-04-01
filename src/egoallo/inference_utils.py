@@ -41,26 +41,17 @@ def load_denoiser(checkpoint_dir: Path) -> EgoDenoiser:
 class InferenceTrajectoryPaths:
     """Paths for running EgoAllo on a single sequence from Project Aria.
 
-    Our basic assumptions here are:
-    1. VRS file for images: there is exactly one VRS file in the trajectory root directory.
-    2. Aria MPS point cloud: there is either one semidense_points.csv.gz file or one global_points.csv.gz file.
-        - Its parent directory should contain other Aria MPS artifacts. (like poses)
-        - This is optionally used for guidance.
-    3. HaMeR outputs: The hamer_outputs.pkl file may or may not exist in the trajectory root directory.
-        - This is optionally used for guidance.
-    4. Aria MPS wrist/palm poses: There may be zero or one wrist_and_palm_poses.csv file.
-        - This is optionally used for guidance.
-    5. Scene splat/ply file: There may be a splat.ply or scene.splat file.
-        - This is only used for visualization.
-    6. IMU readings: The imu_readings.pkl file may or may not exist in the trajectory root directory. 
-        - This is optionally used for guidance.
+    Assumptions:
+    1. VRS file: exactly one .vrs file in the trajectory root directory.
+    2. Aria MPS point cloud: one semidense_points.csv.gz or global_points.csv.gz file.
+    3. Aria hand tracking: zero or one hand_tracking_results.csv file.
+    4. IMU readings: zero or one imu_info.pkl file.
+    5. Scene splat/ply file: optional, for visualization only.
     """
 
     vrs_file: Path
     slam_root_dir: Path
     points_path: Path
-    hamer_outputs: Path | None
-    wrist_and_palm_poses_csv: Path | None
     hand_tracking_results_csv: Path | None
     splat_path: Path | None
     imu_readings_pkl: Path | None
@@ -76,10 +67,6 @@ class InferenceTrajectoryPaths:
             points_paths = tuple(traj_root.glob("**/global_points.csv.gz"))
         assert len(points_paths) == 1, f"Found {len(points_paths)} files!"
 
-        hamer_outputs = traj_root / "hamer_outputs.pkl"
-        if not hamer_outputs.exists():
-            hamer_outputs = None
-
         imu_readings_pkl = tuple(traj_root.glob("**/imu_info.pkl"))
         if len(imu_readings_pkl) == 0:
             imu_readings_pkl = None
@@ -89,14 +76,6 @@ class InferenceTrajectoryPaths:
             )
             imu_readings_pkl = imu_readings_pkl[0]
 
-        wrist_and_palm_poses_csv = tuple(traj_root.glob("**/wrist_and_palm_poses.csv"))
-        if len(wrist_and_palm_poses_csv) == 0:
-            wrist_and_palm_poses_csv = None
-        else:
-            assert len(wrist_and_palm_poses_csv) == 1, (
-                "Found multiple wrist and palm poses files!"
-            )
-        
         hand_tracking_results_csv = tuple(traj_root.glob("**/hand_tracking_results.csv"))
         if len(hand_tracking_results_csv) == 0:
             hand_tracking_results_csv = None
@@ -126,12 +105,8 @@ class InferenceTrajectoryPaths:
             vrs_file=vrs_files[0],
             slam_root_dir=points_paths[0].parent,
             points_path=points_paths[0],
-            hamer_outputs=hamer_outputs,
             imu_readings_pkl=imu_readings_pkl,
             closed_loop_trajectory_csv=closed_loop_trajectory_csv,
-            wrist_and_palm_poses_csv=wrist_and_palm_poses_csv[0]
-            if wrist_and_palm_poses_csv
-            else None,
             hand_tracking_results_csv=hand_tracking_results_csv[0]
             if hand_tracking_results_csv
             else None,

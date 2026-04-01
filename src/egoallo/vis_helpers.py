@@ -16,8 +16,6 @@ from torch import Tensor
 from . import fncsmpl, fncsmpl_extensions, network
 from .hand_detection_structs import (
     CorrespondedAriaHandAllPoseWrtWorld,
-    CorrespondedAriaHandWristPoseDetections,
-    CorrespondedHamerDetections,
 )
 from .imu_detection_structs import CorrespondedImuReadings
 from .imu_utils import IMU_CONFIG, JOINT_ID_TO_NAME_AND_PARENT
@@ -138,8 +136,6 @@ def visualize_traj_and_hand_detections(
     Ts_world_cpf: Float[Tensor, "timesteps 7"],
     traj: network.EgoDenoiseTraj | None,
     body_model: fncsmpl.SmplhModel,
-    hamer_detections: CorrespondedHamerDetections | None = None,
-    aria_detections: CorrespondedAriaHandWristPoseDetections | None = None,
     hand_tracking_detections: CorrespondedAriaHandAllPoseWrtWorld | None = None,
     imu_readings: CorrespondedImuReadings | None = None,
     points_data: np.ndarray | None = None,
@@ -371,15 +367,8 @@ def visualize_traj_and_hand_detections(
     )
     server.scene.add_mesh_trimesh("/cpf/glasses", glasses_mesh, scale=0.001 * 1.05)
 
-    # TODO: remove
-    # hamer_detections = None
-    # aria_detections = None
-
     joint_position_handles: list[viser.SceneNodeHandle] = []
     timestep_handles: list[viser.FrameHandle] = []
-    hamer_handles: list[viser.MeshHandle | viser.PointCloudHandle] = []
-    aria_handles: list[viser.SceneNodeHandle] = []
-    hand_tracking_handles: list[viser.SceneNodeHandle] = []
     if save_joints:
         assert traj is not None
         # Get ALL data across all samples and timesteps
@@ -474,154 +463,6 @@ def visualize_traj_and_hand_detections(
                         )
                         joint_position_handles.append(joint_frame)
 
-        # Visualize HaMeR outputs.
-        if hamer_detections is not None:
-            T_world_cam = SE3(Ts_world_cpf[t]) @ SE3(hamer_detections.T_cpf_cam)
-            server.scene.add_frame(
-                f"/timesteps/{t}/cpf/cam",
-                show_axes=True,
-                axes_length=0.025,
-                axes_radius=0.003,
-                wxyz=T_world_cam.wxyz_xyz[..., :4].numpy(force=True),
-                position=T_world_cam.wxyz_xyz[..., 4:7].numpy(force=True),
-            )
-            hands_l = hamer_detections.detections_left_tuple[t]
-            hands_r = hamer_detections.detections_right_tuple[t]
-            if hands_l is not None:
-                for j in range(hands_l["verts"].shape[0]):
-                    hamer_handles.append(
-                        server.scene.add_mesh_simple(
-                            f"/timesteps/{t}/cpf/cam/left_hand{j}",
-                            vertices=hands_l["verts"][j],
-                            faces=hamer_detections.mano_faces_left.numpy(force=True),
-                            visible=False,
-                        )
-                    )
-                    hamer_handles.append(
-                        server.scene.add_point_cloud(
-                            f"/timesteps/{t}/cpf/cam/lefft_keypoints3d",
-                            points=hands_l["keypoints_3d"][j],
-                            colors=(255, 127, 0),
-                            point_size=0.008,
-                            point_shape="square",
-                            visible=False,
-                        )
-                    )
-            if hands_r is not None:
-                for j in range(hands_r["verts"].shape[0]):
-                    hamer_handles.append(
-                        server.scene.add_mesh_simple(
-                            f"/timesteps/{t}/cpf/cam/right_hand{j}",
-                            vertices=hands_r["verts"][j],
-                            faces=hamer_detections.mano_faces_right.numpy(force=True),
-                            visible=False,
-                        )
-                    )
-                    hamer_handles.append(
-                        server.scene.add_point_cloud(
-                            f"/timesteps/{t}/cpf/cam/right_keypoints3d",
-                            points=hands_r["keypoints_3d"][j],
-                            colors=(0, 127, 255),
-                            point_size=0.008,
-                            point_shape="square",
-                            visible=False,
-                        )
-                    )
-
-        # Visualize Aria detections.
-        if aria_detections is not None:
-            for side in ("left", "right"):
-                detections = {
-                    "left": aria_detections.detections_left_concat,
-                    "right": aria_detections.detections_right_concat,
-                }[side]
-                if detections is None:
-                    continue
-                indices = detections.indices
-                index = torch.searchsorted(indices, t)
-                if index < len(indices) and indices[index] == t:  # found?
-                    aria_handles.append(
-                        server.scene.add_spline_catmull_rom(
-                            f"/timesteps/{t}/aria_detections/{side}",
-                            np.array(
-                                [
-                                    detections.wrist_position[index].numpy(force=True),
-                                    detections.palm_position[index].numpy(force=True),
-                                ]
-                            ),
-                            line_width=3.0,
-                            color=(255, 0, 0) if side == "left" else (0, 255, 0),
-                            visible=False,
-                        )
-                    )
-        
-        # # Visualize all hand tracking detections. 
-        # if hand_tracking_detections is not None:
-        #     for side in ("left", "right"):
-        #         detections = {
-        #             "left": hand_tracking_detections.detections_left_concat,
-        #             "right": hand_tracking_detections.detections_right_concat,
-        #         }[side]
-        #         if detections is None:
-        #             continue
-        #         indices = detections.indices
-        #         # print("shape of detections", detections.landmarks_3d.shape)
-        #         index = torch.searchsorted(indices, t)
-        #         if index < len(indices) and indices[index] == t:  # found?
-        #             # add landmark points
-        #             hand_tracking_handles.append(
-        #                 server.scene.add_point_cloud(
-        #                     f"/timesteps/{t}/hand_tracking_detections/{side}/landmarks",
-        #                     detections.landmarks_3d[index].numpy(force=True),  # More efficient: use all 21 landmarks at once
-        #                     point_size=0.01,  # Increased point size for better visibility
-        #                     colors=(255, 0, 0) if side == "left" else (0, 255, 0),
-        #                     visible=False,
-        #                 )
-        #             )
-        #             # add wrist and palm points, connect in a line
-        #             hand_tracking_handles.append(
-        #                 server.scene.add_spline_catmull_rom(
-        #                     f"/timesteps/{t}/hand_tracking_detections/{side}/wrist_palm",
-        #                     np.array(
-        #                         [
-        #                             detections.wrist_position[index].numpy(force=True),
-        #                             detections.palm_position[index].numpy(force=True),
-        #                         ]
-        #                     ),
-        #                     line_width=3.0,  
-        #                     color=(255, 0, 0) if side == "left" else (0, 255, 0),
-        #                     visible=False,
-        #                 )
-        #             )
-                    
-        #             # add wrist normal vector as arrow
-        #             wrist_pos = detections.wrist_position[index].numpy(force=True)
-        #             wrist_normal = detections.wrist_normal[index].numpy(force=True)
-        #             wrist_arrow_end = wrist_pos + 0.05 * wrist_normal  # Scale normal vector for visibility
-        #             hand_tracking_handles.append(
-        #                 server.scene.add_spline_catmull_rom(
-        #                     f"/timesteps/{t}/hand_tracking_detections/{side}/wrist_normal",
-        #                     np.array([wrist_pos, wrist_arrow_end]),
-        #                     line_width=4.0,
-        #                     color=(255, 100, 100) if side == "left" else (100, 255, 100),  # Lighter red/green
-        #                     visible=False,
-        #                 )
-        #             )
-                    
-        #             # add palm normal vector as arrow
-        #             palm_pos = detections.palm_position[index].numpy(force=True)
-        #             palm_normal = detections.palm_normal[index].numpy(force=True)
-        #             palm_arrow_end = palm_pos + 0.05 * palm_normal  # Scale normal vector for visibility
-        #             hand_tracking_handles.append(
-        #                 server.scene.add_spline_catmull_rom(
-        #                     f"/timesteps/{t}/hand_tracking_detections/{side}/palm_normal",
-        #                     np.array([palm_pos, palm_arrow_end]),
-        #                     line_width=4.0,
-        #                     color=(255, 100, 100) if side == "left" else (100, 255, 100),  # Lighter red/green
-        #                     visible=False,
-        #                 )
-        #             )
-
     body_handles = (
         [
             server.scene.add_mesh_skinned(
@@ -659,8 +500,6 @@ def visualize_traj_and_hand_detections(
     gui_smpl_opacity = server.gui.add_slider(
         "SMPL Opacity", initial_value=1.0, min=0.0, max=1.0, step=0.01
     )
-    gui_hamer_opacity = server.gui.add_slider(
-        "HaMeR Opacity", initial_value=1.0, min=0.0, max=1.0, step=0.01
     )
 
     @gui_smpl_opacity.on_update
@@ -668,21 +507,6 @@ def visualize_traj_and_hand_detections(
         for handle in body_handles:
             handle.opacity = gui_smpl_opacity.value
 
-    @gui_hamer_opacity.on_update
-    def _(_) -> None:
-        for handle in hamer_handles:
-            if isinstance(handle, viser.MeshHandle):
-                handle.opacity = gui_hamer_opacity.value
-
-    gui_show_hamer_hands = server.gui.add_checkbox(
-        "Show HaMeR hands", initial_value=False
-    )
-    gui_show_aria_hands = server.gui.add_checkbox(
-        "Show wrist detections", initial_value=False
-    )
-    gui_show_hand_tracking_hands = server.gui.add_checkbox(
-        "Show hand tracking hands", initial_value=False
-    )
     gui_body_color = server.gui.add_rgb("Body color", initial_value=(152, 93, 229))
 
     if show_joints:
@@ -712,20 +536,6 @@ def visualize_traj_and_hand_detections(
         for handle in body_handles:
             handle.wireframe = gui_wireframe.value
 
-    @gui_show_hamer_hands.on_update
-    def _(_) -> None:
-        for handle in hamer_handles:
-            handle.visible = gui_show_hamer_hands.value
-
-    @gui_show_aria_hands.on_update
-    def _(_) -> None:
-        for handle in aria_handles:
-            handle.visible = gui_show_aria_hands.value
-
-    @gui_show_hand_tracking_hands.on_update
-    def _(_) -> None:
-        for handle in hand_tracking_handles:
-            handle.visible = gui_show_hand_tracking_hands.value
 
     @gui_body_color.on_update
     def _(_) -> None:

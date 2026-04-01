@@ -13,13 +13,9 @@ from egoallo import fncsmpl, fncsmpl_extensions
 from egoallo.data.aria_mps import load_point_cloud_and_find_ground
 from egoallo.guidance_optimizer_jax import GuidanceMode
 from egoallo.hand_detection_structs import (
-    AriaHandAllPoseWrtWorld,
-    AriaHandWristPoseWrtWorld,
-    CorrespondedAriaHandWristPoseDetections,
     CorrespondedAriaHandAllPoseWrtWorld,
-    CorrespondedHamerDetections,
 )
-from egoallo.imu_detection_structs import CorrespondedImuReadings   
+from egoallo.imu_detection_structs import CorrespondedImuReadings
 from egoallo.inference_utils import (
     InferenceInputTransforms,
     InferenceTrajectoryPaths,
@@ -42,8 +38,8 @@ class Args:
             ...
         ...
     """
-    checkpoint_dir: Path = Path("./egoallo_checkpoint_april13/checkpoints_3000000/")
-    smplh_npz_path: Path = Path("../model/smplh/neutral/model.npz")
+    checkpoint_dir: Path = Path("egoallo_checkpoint_april13/checkpoints_3000000/")
+    smplh_npz_path: Path = Path("model/smplh/neutral/model.npz")
 
     glasses_x_angle_offset: float = 0.0
     """Rotate the CPF poses by some X angle."""
@@ -53,7 +49,7 @@ class Args:
     """How many timesteps to estimate body motion for. Use -1 for full sequence."""
     num_samples: int = 1
     """Number of samples to take."""
-    guidance_mode: GuidanceMode = "aria_wrist_only"
+    guidance_mode: GuidanceMode = "imu_aria_hand"
     """Which guidance mode to use."""
     guidance_inner: bool = True
     """Whether to apply guidance optimizer between denoising steps. This is
@@ -116,18 +112,6 @@ def main(args: Args) -> None:
     ]
     del transforms
 
-    # Get temporally corresponded HaMeR detections.
-    if traj_paths.hamer_outputs is not None:
-        print("--Hamer available--")
-        hamer_detections = CorrespondedHamerDetections.load(
-            traj_paths.hamer_outputs,
-            pose_timestamps_sec,
-        ).to(device) # read with the correct length
-        print("++Loaded hamer detections++\n")
-    else:
-        print("No hand detections found.\n")
-        hamer_detections = None
-
     # Get temporally corresponded IMU readings.
     if traj_paths.imu_readings_pkl is not None:
         print("--IMU available--")
@@ -142,8 +126,6 @@ def main(args: Args) -> None:
         imu_readings = None
 
     # Get temporally corresponded Aria hand tracking results.
-    # This single source provides both wrist/palm poses (aria_detections)
-    # and full 21-landmark hand poses (aria_all_hand_detections).
     if traj_paths.hand_tracking_results_csv is not None:
         print("--Aria hand tracking available--")
         aria_all_hand_detections = CorrespondedAriaHandAllPoseWrtWorld.load(
@@ -151,35 +133,9 @@ def main(args: Args) -> None:
             pose_timestamps_sec,
             Ts_world_device=Ts_world_device.numpy(force=True),
         ).to(device)
-        print("++Loaded Aria all hand detections++")
-
-        # Derive wrist/palm detections from the same hand tracking results.
-        def _extract_wrist_palm(
-            det: AriaHandAllPoseWrtWorld | None,
-        ) -> AriaHandWristPoseWrtWorld | None:
-            if det is None:
-                return None
-            return AriaHandWristPoseWrtWorld(
-                confidence=det.confidence,
-                wrist_position=det.wrist_position,
-                wrist_normal=det.wrist_normal,
-                palm_position=det.palm_position,
-                palm_normal=det.palm_normal,
-                indices=det.indices,
-            )
-
-        aria_detections = CorrespondedAriaHandWristPoseDetections(
-            detections_left_concat=_extract_wrist_palm(
-                aria_all_hand_detections.detections_left_concat
-            ),
-            detections_right_concat=_extract_wrist_palm(
-                aria_all_hand_detections.detections_right_concat
-            ),
-        )
-        print("++Derived Aria wrist and palm detections++\n")
+        print("++Loaded Aria all hand detections++\n")
     else:
         print("No Aria hand tracking results found.\n")
-        aria_detections = None
         aria_all_hand_detections = None
 
 
@@ -200,8 +156,6 @@ def main(args: Args) -> None:
         guidance_inner=args.guidance_inner,
         guidance_post=args.guidance_post,
         Ts_world_cpf=Ts_world_cpf,
-        hamer_detections=hamer_detections,
-        aria_detections=aria_detections,
         aria_all_hand_detections=aria_all_hand_detections,
         imu_readings=imu_readings,
         num_samples=args.num_samples,
@@ -261,8 +215,6 @@ def main(args: Args) -> None:
             Ts_world_cpf[1:],
             traj,
             body_model,
-            hamer_detections,
-            aria_detections,
             points_data=points_data,
             splat_path=traj_paths.splat_path,
             floor_z=floor_z,
