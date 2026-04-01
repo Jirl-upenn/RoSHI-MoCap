@@ -38,7 +38,7 @@ class Args:
             ...
         ...
     """
-    checkpoint_dir: Path = Path("egoallo_checkpoint_april13/checkpoints_3000000/")
+    checkpoint_dir: Path = Path("model/egoallo/checkpoints_3000000/")
     smplh_npz_path: Path = Path("model/smplh/neutral/model.npz")
 
     glasses_x_angle_offset: float = 0.0
@@ -49,7 +49,7 @@ class Args:
     """How many timesteps to estimate body motion for. Use -1 for full sequence."""
     num_samples: int = 1
     """Number of samples to take."""
-    guidance_mode: GuidanceMode = "imu_aria_hand"
+    guidance_mode: GuidanceMode = "roshi"
     """Which guidance mode to use."""
     guidance_inner: bool = True
     """Whether to apply guidance optimizer between denoising steps. This is

@@ -42,7 +42,7 @@ Or download manually from
 | 2 | `src/pipeline/02_calibrate.py` | Calibrate bone-to-sensor rotation offsets |
 | 3 | `src/pipeline/03_sync.py` | Synchronize RGB + calibrated IMU data |
 | 4 | `src/pipeline/04_inference.py` | Run EgoAllo diffusion-based pose estimation |
-| 5 | `src/pipeline/05_visualize.py` | Multi-method visualization (GT, IMU, TTO, EgoAllo) |
+| 5 | `src/pipeline/05_visualize.py` | Multi-method visualization (SAM-3D, IMU FK, RoSHI, EgoAllo) |
 | 6 | `src/pipeline/06_evaluate.py` | Evaluate against OptiTrack ground truth |
 
 ## Quick Start
@@ -55,22 +55,18 @@ python src/pipeline/03_sync.py <session>
 
 # EgoAllo inference (requires GPU + JAX with CUDA)
 python src/pipeline/04_inference.py \
-  --traj-root /path/to/received_recordings/dataset1 \
-  --guidance-mode imu_aria_hand
+  --traj-root /path/to/received_recordings/dataset1
 
-# Visualize all methods side-by-side (GT, IMU-only, TTO, EgoAllo + third-person RGB)
+# Visualize all methods side-by-side (SAM-3D, IMU FK, RoSHI, EgoAllo + third-person RGB)
 python src/pipeline/05_visualize.py <session>
 
 # Only compare specific methods
-python src/pipeline/05_visualize.py <session> --no-imu --no-tto          # EgoAllo vs GT
-python src/pipeline/05_visualize.py <session> --no-egoallo --no-tto      # IMU-only vs GT
-python src/pipeline/05_visualize.py <session> --egoallo-csv path/to/pred.csv  # custom CSV
-
-# Evaluate against OptiTrack ground truth
-python src/pipeline/06_evaluate.py <session>
+python src/pipeline/05_visualize.py <session> --no-imu --no-roshi        # EgoAllo vs SAM-3D
+python src/pipeline/05_visualize.py <session> --no-egoallo --no-roshi    # IMU FK vs SAM-3D
+python src/pipeline/05_visualize.py <session> --roshi-csv path/to/pred.csv    # custom CSV
 ```
 
-Available guidance modes: `imu_only`, `imu_aria_hand`, `aria_hand`.
+Available guidance modes: `egoallo`, `egoallo_ariawrist`, `roshi` (default), `roshi_ariahand`.
 
 ## Project Structure
 
@@ -82,7 +78,7 @@ RoSHI-MoCap/
 │   └── utils/             # Shared utilities (incl. imu_pose_viewer for debugging)
 ├── evaluation/            # Evaluation scripts and ground truth
 ├── scripts/               # Download scripts
-├── model/                 # SMPL-H model files (not tracked)
+├── model/                 # Model files: SMPL-H, SMPL-X, EgoAllo checkpoint (not tracked)
 ├── pyproject.toml         # Package configuration
 └── requirements_roshi.txt # Pip requirements
 ```

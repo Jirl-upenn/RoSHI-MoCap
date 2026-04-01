@@ -806,7 +806,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--smpl-model-path",
-        default=str(Path(__file__).resolve().parent / "MHR" / "model" / "smplx" / "SMPLX_NEUTRAL.npz"),
+        default="model/smplx/SMPLX_NEUTRAL.npz",
         help="Path to SMPLX model file"
     )
     parser.add_argument(

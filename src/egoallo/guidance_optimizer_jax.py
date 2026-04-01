@@ -148,13 +148,16 @@ def _optimize_vmapped(
 
 
 # Guidance modes for constraint optimization.
+# All modes use EgoAllo diffusion; the mode selects which guidance signals are applied.
 GuidanceMode = Literal[
-    # Only use IMU sensors.
-    "imu_only",
-    # Use IMU sensors and Aria hand tracking.
-    "imu_aria_hand",
-    # Only use Aria hand tracking.
-    "aria_hand",
+    # Pure EgoAllo baseline: diffusion only, no IMU, no Aria (foot skating only).
+    "egoallo",
+    # EgoAllo + Aria wrist pose guidance (no IMU, no full hand — wrist position only).
+    "egoallo_ariawrist",
+    # RoSHI: diffusion + IMU guidance.
+    "roshi",
+    # RoSHI + Aria hand tracking.
+    "roshi_ariahand",
 ]
 
 @jdc.pytree_dataclass
@@ -191,7 +194,22 @@ class JaxGuidanceParams:
         mode: GuidanceMode,
         phase: Literal["inner", "post"],
     ) -> JaxGuidanceParams:
-        if mode == "imu_only":
+        if mode == "egoallo":
+            return {
+                "inner": JaxGuidanceParams(
+                    aria_all_hand=False,
+                    aria_all_landmarks=False,
+                    imu_readings=False,
+                    max_iters=5,
+                ),
+                "post": JaxGuidanceParams(
+                    aria_all_hand=False,
+                    aria_all_landmarks=False,
+                    imu_readings=False,
+                    max_iters=20,
+                ),
+            }[phase]
+        elif mode == "roshi":
             return {
                 "inner": JaxGuidanceParams(
                     aria_all_hand=False,
@@ -206,7 +224,7 @@ class JaxGuidanceParams:
                     max_iters=20,
                 ),
             }[phase]
-        elif mode == "imu_aria_hand":
+        elif mode == "roshi_ariahand":
             return {
                 "inner": JaxGuidanceParams(
                     aria_all_hand=True,
@@ -221,17 +239,17 @@ class JaxGuidanceParams:
                     max_iters=20,
                 ),
             }[phase]
-        elif mode == "aria_hand":
+        elif mode == "egoallo_ariawrist":
             return {
                 "inner": JaxGuidanceParams(
                     aria_all_hand=True,
-                    aria_all_landmarks=True,
+                    aria_all_landmarks=False,
                     imu_readings=False,
                     max_iters=5,
                 ),
                 "post": JaxGuidanceParams(
                     aria_all_hand=True,
-                    aria_all_landmarks=True,
+                    aria_all_landmarks=False,
                     imu_readings=False,
                     max_iters=20,
                 ),

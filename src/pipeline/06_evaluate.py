@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Joint angle evaluation (MPJAE): SAM-3D ground truth vs IMU-only / EgoAllo / TTO.
+Joint angle evaluation (MPJAE): SAM-3D ground truth vs IMU-only / EgoAllo / RoSHI.
 
 Metric (degrees):
   - Local rotation error (MPJAE):  geodesic angle between GT and predicted
@@ -9,7 +9,7 @@ Metric (degrees):
 Usage:
   python 06_evaluate.py <session_dir>
   python 06_evaluate.py <session_dir> --egoallo-csv path/to/egoallo.csv
-  python 06_evaluate.py <session_dir> --tto-csv path/to/tto.csv --csv results.csv
+  python 06_evaluate.py <session_dir> --roshi-csv path/to/roshi.csv --csv results.csv
 """
 
 from __future__ import annotations
@@ -50,9 +50,9 @@ compute_time_intersection_ns = _viewer.compute_time_intersection_ns
 ensure_calibration = _viewer.ensure_calibration
 rot_angle_deg = _viewer.rot_angle_deg
 _str2bool = _viewer._str2bool
-load_tto_local_rotations = _viewer.load_tto_local_rotations
+load_local_rotations_csv = _viewer.load_local_rotations_csv
 find_egoallo_csv = _viewer.find_egoallo_csv
-find_tto_csv = _viewer.find_tto_csv
+find_roshi_csv = _viewer.find_roshi_csv
 get_nearest_sync_timestamp = _viewer.get_nearest_sync_timestamp
 
 from utils.imu_id_mapping import (
@@ -81,7 +81,7 @@ REPORT_JOINTS = {
     "right-wrist": 21,
 }
 
-# All 22 SMPLX body joints (for EgoAllo / TTO evaluation over all joints).
+# All 22 SMPLX body joints (for EgoAllo / RoSHI evaluation over all joints).
 ALL_SMPLX_BODY_JOINTS = {
     "pelvis": 0,
     "left-hip": 1,
@@ -214,7 +214,7 @@ def compute_errors_local_rot(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute per-frame local rotation errors for a method that provides SMPLX
-    local rotations (e.g. EgoAllo, TTO).
+    local rotations (e.g. EgoAllo, RoSHI).
 
     Returns:
         local_rot_errors:  (T, J) in degrees
@@ -283,8 +283,8 @@ def print_report(
 
     metrics: Dict[str, float] = {}
 
-    # Use ALL_SMPLX_BODY_JOINTS for EgoAllo/TTO, REPORT_JOINTS for IMU
-    is_full_body = mode in ("EgoAllo", "TTO")
+    # Use ALL_SMPLX_BODY_JOINTS for EgoAllo/RoSHI, REPORT_JOINTS for IMU
+    is_full_body = mode in ("EgoAllo", "RoSHI")
     joint_set = ALL_SMPLX_BODY_JOINTS if is_full_body else REPORT_JOINTS
 
     hdr = f"  {'Joint':<18s} {'Local (°)':>10s} {'± std':>8s}"
@@ -338,7 +338,7 @@ def write_csv(
     timeline_frame_ids: np.ndarray,
 ) -> None:
     """Write per-frame local rotation errors (degrees) to CSV."""
-    is_full_body = mode in ("EgoAllo", "TTO")
+    is_full_body = mode in ("EgoAllo", "RoSHI")
     joint_set = ALL_SMPLX_BODY_JOINTS if is_full_body else REPORT_JOINTS
     joint_names_ordered = sorted(joint_set.items(), key=lambda x: x[1])
     header = ["frame_id", "mode"]
@@ -389,8 +389,8 @@ def main() -> int:
                         type=_str2bool)
     parser.add_argument("--egoallo-csv", type=Path, default=None,
                         help="Path to EgoAllo *.csv (defaults to session/egoallo/*.csv).")
-    parser.add_argument("--tto-csv", type=Path, default=None,
-                        help="Path to TTO *.csv (defaults to session/tto/*.csv).")
+    parser.add_argument("--roshi-csv", type=Path, default=None,
+                        help="Path to RoSHI *.csv (defaults to session/roshi/*.csv).")
 
     args = parser.parse_args()
     session = args.session_dir.resolve()
@@ -548,24 +548,24 @@ def main() -> int:
     if args.csv and args.csv.exists():
         args.csv.unlink()
 
-    # Load EgoAllo / TTO local rotations (optional)
+    # Load EgoAllo / RoSHI local rotations (optional)
     ego_csv = args.egoallo_csv or find_egoallo_csv(session)
     ego_local_dict: Dict[int, np.ndarray] = {}
     ego_t_sorted: List[int] = []
     if ego_csv is not None and ego_csv.exists():
-        ego_local_dict = load_tto_local_rotations(ego_csv, model.num_joints)
+        ego_local_dict = load_local_rotations_csv(ego_csv, model.num_joints)
         if ego_local_dict:
             ego_t_sorted = sorted(ego_local_dict.keys())
             print(f"Loaded EgoAllo rotations from {ego_csv}: {len(ego_local_dict)} timestamps")
 
-    tto_csv = args.tto_csv or find_tto_csv(session)
-    tto_local_dict: Dict[int, np.ndarray] = {}
+    roshi_csv = args.roshi_csv or find_roshi_csv(session)
+    roshi_local_dict: Dict[int, np.ndarray] = {}
     tto_t_sorted: List[int] = []
-    if tto_csv is not None and tto_csv.exists():
-        tto_local_dict = load_tto_local_rotations(tto_csv, model.num_joints)
-        if tto_local_dict:
-            tto_t_sorted = sorted(tto_local_dict.keys())
-            print(f"Loaded TTO rotations from {tto_csv}: {len(tto_local_dict)} timestamps")
+    if roshi_csv is not None and roshi_csv.exists():
+        roshi_local_dict = load_local_rotations_csv(roshi_csv, model.num_joints)
+        if roshi_local_dict:
+            tto_t_sorted = sorted(roshi_local_dict.keys())
+            print(f"Loaded RoSHI rotations from {roshi_csv}: {len(roshi_local_dict)} timestamps")
 
     all_metrics: Dict[str, float] = {}
 
@@ -597,18 +597,18 @@ def main() -> int:
         if args.csv:
             write_csv(args.csv, "EgoAllo", le_e, vm_e, frame_ids)
 
-    # --- TTO evaluation ---
-    if tto_local_dict:
+    # --- RoSHI evaluation ---
+    if roshi_local_dict:
         le_t, vm_t = compute_errors_local_rot(
             gt=gt,
-            local_rot_dict=tto_local_dict,
+            local_rot_dict=roshi_local_dict,
             t_sorted=tto_t_sorted,
             timeline_frame_ids=frame_ids,
             timeline=frame_times,
         )
-        all_metrics.update(print_report("TTO", le_t, vm_t))
+        all_metrics.update(print_report("RoSHI", le_t, vm_t))
         if args.csv:
-            write_csv(args.csv, "TTO", le_t, vm_t, frame_ids)
+            write_csv(args.csv, "RoSHI", le_t, vm_t, frame_ids)
 
     if args.csv:
         print(f"\nPer-frame errors written to {args.csv}")

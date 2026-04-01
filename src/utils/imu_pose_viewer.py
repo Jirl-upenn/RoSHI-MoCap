@@ -84,8 +84,8 @@ from utils.smpl_utils import (
     build_local_rots_from_imu,
 )
 
-# SMPL/SMPLX joint mapping for TTO local-rotation CSVs
-TTO_JOINT_TO_SMPLX_INDEX = {
+# SMPL/SMPLX joint mapping for local-rotation CSVs (shared by RoSHI and EgoAllo)
+JOINT_NAME_TO_SMPLX_INDEX = {
     "hips": 0,
     "leftUpLeg": 1,
     "rightUpLeg": 2,
@@ -269,11 +269,11 @@ def get_nearest_sync_timestamp(sorted_t: List[int], t_ns: int) -> Optional[int]:
     return left if abs(left - t_ns) <= abs(right - t_ns) else right
 
 
-def find_tto_csv(session_dir: Path) -> Optional[Path]:
-    tto_dir = session_dir / "tto"
-    if not tto_dir.exists():
+def find_roshi_csv(session_dir: Path) -> Optional[Path]:
+    roshi_dir = session_dir / "roshi"
+    if not roshi_dir.exists():
         return None
-    matches = sorted(tto_dir.glob("*.csv"))
+    matches = sorted(roshi_dir.glob("*.csv"))
     return matches[0] if matches else None
 
 
@@ -285,8 +285,8 @@ def find_egoallo_csv(session_dir: Path) -> Optional[Path]:
     return matches[0] if matches else None
 
 
-def load_tto_local_rotations(csv_path: Path, num_joints: int) -> Dict[int, np.ndarray]:
-    """Load TTO joint local rotations -> {utc_ns: (J,3,3)}."""
+def load_local_rotations_csv(csv_path: Path, num_joints: int) -> Dict[int, np.ndarray]:
+    """Load local joint rotations from CSV -> {utc_ns: (J,3,3)}."""
     out: Dict[int, np.ndarray] = {}
     with open(csv_path, "r", newline="") as f:
         reader = csv.DictReader(f)
@@ -297,7 +297,7 @@ def load_tto_local_rotations(csv_path: Path, num_joints: int) -> Dict[int, np.nd
                 rot = np.array(ast.literal_eval(row["rot_matrix"]), dtype=np.float64)
             except Exception:
                 continue
-            jidx = TTO_JOINT_TO_SMPLX_INDEX.get(joint_name)
+            jidx = JOINT_NAME_TO_SMPLX_INDEX.get(joint_name)
             if jidx is None:
                 continue
             if t_ns not in out:
@@ -388,10 +388,10 @@ def main() -> int:
     parser.add_argument("--sync-offset-x", type=float, default=0.0, help="X offset applied to Sync mesh/joints (center).")
     parser.add_argument("--imu-offset-x", type=float, default=1.2, help="X offset applied to IMU mesh/joints for side-by-side viewing.")
     parser.add_argument(
-        "--tto-csv",
+        "--roshi-csv",
         type=Path,
         default=None,
-        help="Path to *.csv for extra mesh (defaults to session/tto/*.csv).",
+        help="Path to RoSHI prediction CSV (defaults to session/roshi/*.csv).",
     )
     parser.add_argument(
         "--egoallo-csv",
@@ -549,28 +549,28 @@ def main() -> int:
 
     show_sync = len(sync_imu_dict) > 0
 
-    # Load TTO local-rotation CSV (optional - extra mesh)
-    tto_csv = args.tto_csv or find_tto_csv(session)
-    tto_local_dict: Dict[int, np.ndarray] = {}
-    tto_t_sorted: List[int] = []
-    if tto_csv is not None and tto_csv.exists():
-        tto_local_dict = load_tto_local_rotations(tto_csv, model.num_joints)
-        if tto_local_dict:
-            tto_t_sorted = sorted(tto_local_dict.keys())
-            print(f"Loaded TTO local rotations from {tto_csv}: {len(tto_local_dict)} timestamps")
+    # Load RoSHI local-rotation CSV (optional - extra mesh)
+    roshi_csv = args.roshi_csv or find_roshi_csv(session)
+    roshi_local_dict: Dict[int, np.ndarray] = {}
+    roshi_t_sorted: List[int] = []
+    if roshi_csv is not None and roshi_csv.exists():
+        roshi_local_dict = load_local_rotations_csv(roshi_csv, model.num_joints)
+        if roshi_local_dict:
+            roshi_t_sorted = sorted(roshi_local_dict.keys())
+            print(f"Loaded RoSHI local rotations from {roshi_csv}: {len(roshi_local_dict)} timestamps")
         else:
-            print(f"Warning: TTO CSV found but empty/invalid: {tto_csv}")
-    elif tto_csv is not None:
-        print(f"Warning: --tto-csv specified but does not exist: {tto_csv}")
+            print(f"Warning: RoSHI CSV found but empty/invalid: {roshi_csv}")
+    elif roshi_csv is not None:
+        print(f"Warning: --roshi-csv specified but does not exist: {roshi_csv}")
 
-    show_tto = len(tto_local_dict) > 0
+    show_roshi = len(roshi_local_dict) > 0
 
     # Load EgoAllo original local-rotation CSV (optional - extra mesh)
     ego_csv = args.egoallo_csv or find_egoallo_csv(session)
     ego_local_dict: Dict[int, np.ndarray] = {}
     ego_t_sorted: List[int] = []
     if ego_csv is not None and ego_csv.exists():
-        ego_local_dict = load_tto_local_rotations(ego_csv, model.num_joints)
+        ego_local_dict = load_local_rotations_csv(ego_csv, model.num_joints)
         if ego_local_dict:
             ego_t_sorted = sorted(ego_local_dict.keys())
             print(f"Loaded EgoAllo original rotations from {ego_csv}: {len(ego_local_dict)} timestamps")
@@ -719,11 +719,11 @@ def main() -> int:
     grid_y = 1.2 if args.up_direction == "-y" else -1.2
     server.scene.add_grid("/grid", position=(0.0, grid_y, 0.0), plane="xz")
 
-    # Display offsets: left-to-right: GT, IMU, EgoAllo, TTO  (sync further right if present)
+    # Display offsets: left-to-right: GT, IMU, EgoAllo, RoSHI  (sync further right if present)
     gt_display_x = float(args.gt_offset_x)                          # -1.2
     imu_display_x = 0.0                                              #  0.0
     ego_display_x = float(abs(args.imu_offset_x))                   #  1.2
-    tto_display_x = float(abs(args.imu_offset_x) * 2.0)             #  2.4
+    roshi_display_x = float(abs(args.imu_offset_x) * 2.0)             #  2.4
     sync_display_x = float(abs(args.imu_offset_x) * 3.0)            #  3.6
 
     # Initialize with rest pose mesh
@@ -804,43 +804,43 @@ def main() -> int:
                 axes_radius=0.003,
             )
 
-    # TTO mesh (purple, other side of GT) - from joint_local_rot CSV
-    tto_mesh_handle = None
-    tto_joint_frames = {}
-    tto_joints_handle = None
-    if show_tto:
-        v_tto = verts_w.copy() - np.array([imu_display_x, 0.0, 0.0], dtype=np.float32)[None, :]
-        v_tto = v_tto + np.array([tto_display_x, 0.0, 0.0], dtype=np.float32)[None, :]
-        tto_mesh_handle = server.scene.add_mesh_simple(
-            "/tto_mesh",
-            vertices=v_tto.astype(np.float32),
+    # RoSHI mesh (purple) - from joint_local_rot CSV
+    roshi_mesh_handle = None
+    roshi_joint_frames = {}
+    roshi_joints_handle = None
+    if show_roshi:
+        v_roshi = verts_w.copy() - np.array([imu_display_x, 0.0, 0.0], dtype=np.float32)[None, :]
+        v_roshi = v_roshi + np.array([roshi_display_x, 0.0, 0.0], dtype=np.float32)[None, :]
+        roshi_mesh_handle = server.scene.add_mesh_simple(
+            "/roshi_mesh",
+            vertices=v_roshi.astype(np.float32),
             faces=model.faces.astype(np.uint32),
             color=(0.6, 0.4, 0.95),  # Purple
             wireframe=False,
             opacity=0.55,
         )
-        tto_label = server.scene.add_label(
-            name="/tto_mesh_label",
-            text="TTO mesh",
-            position=(float(tto_display_x), 1.2, 0.0),
+        roshi_label = server.scene.add_label(
+            name="/roshi_mesh_label",
+            text="RoSHI mesh",
+            position=(float(roshi_display_x), 1.2, 0.0),
             visible=True,
         )
-        tto_joints_handle = server.scene.add_point_cloud(
-            "/tto_joints_all",
+        roshi_joints_handle = server.scene.add_point_cloud(
+            "/roshi_joints_all",
             points=np.zeros((model.num_joints, 3), dtype=np.float32),
             colors=np.tile(np.array([[0.7, 0.5, 0.95]], dtype=np.float32), (model.num_joints, 1)),
             point_size=0.01,
         )
         for name, idx in SMPLX_JOINT_INDEX_MAP.items():
-            tto_joint_frames[name] = server.scene.add_frame(
-                f"/tto_joints/{name}",
+            roshi_joint_frames[name] = server.scene.add_frame(
+                f"/roshi_joints/{name}",
                 wxyz=(1.0, 0.0, 0.0, 0.0),
                 position=(0.0, 0.0, 0.0),
                 axes_length=0.06,
                 axes_radius=0.003,
             )
 
-    # EgoAllo original mesh (magenta) - other side of TTO
+    # EgoAllo original mesh (magenta) - other side of RoSHI
     ego_mesh_handle = None
     ego_joint_frames = {}
     ego_joints_handle = None
@@ -927,7 +927,7 @@ def main() -> int:
     mode_text = server.gui.add_text(calib_label, "")
     legend_text = server.gui.add_text(
         "Meshes",
-        "IMU mesh: blue | Sync mesh: green | GT mesh: orange | TTO mesh: purple | EgoAllo mesh: magenta",
+        "IMU mesh: blue | Sync mesh: green | GT mesh: orange | RoSHI mesh: purple | EgoAllo mesh: magenta",
     )
     info_text = server.gui.add_text("Info", "")
     sync_toggle = server.gui.add_checkbox("Show Sync Mesh", initial_value=show_sync) if show_sync else None
@@ -1066,42 +1066,42 @@ def main() -> int:
 
                 sync_results = (sync_joints_centered, sync_T_w, vv_sync)
 
-        # --- TTO mesh pre-computation ---
-        tto_visible = show_tto and tto_mesh_handle is not None
-        tto_results = None  # (tto_joints_centered, tto_T_w, tto_vv) or None
-        if tto_visible:
-            nearest_tto_t = get_nearest_sync_timestamp(tto_t_sorted, t_ns)
-            if nearest_tto_t is not None:
-                tto_local = tto_local_dict.get(nearest_tto_t)
-                if tto_local is not None:
-                    tto_joints_w, tto_T_w, tto_verts_w = smplx_forward_kinematics(
-                        model, tto_local, betas, compute_vertices=True,
+        # --- RoSHI mesh pre-computation ---
+        roshi_visible = show_roshi and roshi_mesh_handle is not None
+        roshi_results = None  # (roshi_joints_centered, roshi_T_w, roshi_vv) or None
+        if roshi_visible:
+            nearest_roshi_t = get_nearest_sync_timestamp(roshi_t_sorted, t_ns)
+            if nearest_roshi_t is not None:
+                roshi_local = roshi_local_dict.get(nearest_roshi_t)
+                if roshi_local is not None:
+                    roshi_joints_w, roshi_T_w, roshi_verts_w = smplx_forward_kinematics(
+                        model, roshi_local, betas, compute_vertices=True,
                         v_shaped=cached_v_shaped, j_tpose=cached_j_tpose,
                     )
-                    # Align TTO into GT coordinate system using pelvis at first frame.
+                    # Align RoSHI into GT coordinate system using pelvis at first frame.
                     if gt_pelvis_R0 is not None:
-                        tto_root_R = tto_T_w[0, :3, :3].astype(np.float64)
-                        if "tto_to_gt_align" not in state:
-                            state["tto_to_gt_align"] = gt_pelvis_R0 @ tto_root_R.T.copy()
-                        R_tto_to_gt = state["tto_to_gt_align"]
-                        tto_joints_w = (R_tto_to_gt @ tto_joints_w.T).T
-                        tto_T_w[:, :3, :3] = R_tto_to_gt @ tto_T_w[:, :3, :3]
-                        tto_T_w[:, :3, 3] = (R_tto_to_gt @ tto_T_w[:, :3, 3].T).T
-                        if tto_verts_w is not None:
-                            tto_verts_w = (R_tto_to_gt @ tto_verts_w.T).T
+                        roshi_root_R = roshi_T_w[0, :3, :3].astype(np.float64)
+                        if "roshi_to_gt_align" not in state:
+                            state["roshi_to_gt_align"] = gt_pelvis_R0 @ roshi_root_R.T.copy()
+                        R_roshi_to_gt = state["roshi_to_gt_align"]
+                        roshi_joints_w = (R_roshi_to_gt @ roshi_joints_w.T).T
+                        roshi_T_w[:, :3, :3] = R_roshi_to_gt @ roshi_T_w[:, :3, :3]
+                        roshi_T_w[:, :3, 3] = (R_roshi_to_gt @ roshi_T_w[:, :3, 3].T).T
+                        if roshi_verts_w is not None:
+                            roshi_verts_w = (R_roshi_to_gt @ roshi_verts_w.T).T
 
-                    tto_pelvis_pos = tto_joints_w[0].copy()
-                    tto_joints_centered = tto_joints_w - tto_pelvis_pos[None, :]
-                    tto_joints_centered = tto_joints_centered + np.array(
-                        [tto_display_x, 0.0, 0.0], dtype=np.float32
+                    roshi_pelvis_pos = roshi_joints_w[0].copy()
+                    roshi_joints_centered = roshi_joints_w - roshi_pelvis_pos[None, :]
+                    roshi_joints_centered = roshi_joints_centered + np.array(
+                        [roshi_display_x, 0.0, 0.0], dtype=np.float32
                     )[None, :]
 
-                    tto_vv = None
-                    if tto_verts_w is not None:
-                        tto_vv = (tto_verts_w - tto_pelvis_pos[None, :]).astype(np.float32)
-                        tto_vv = tto_vv + np.array([tto_display_x, 0.0, 0.0], dtype=np.float32)[None, :]
+                    roshi_vv = None
+                    if roshi_verts_w is not None:
+                        roshi_vv = (roshi_verts_w - roshi_pelvis_pos[None, :]).astype(np.float32)
+                        roshi_vv = roshi_vv + np.array([roshi_display_x, 0.0, 0.0], dtype=np.float32)[None, :]
 
-                    tto_results = (tto_joints_centered, tto_T_w, tto_vv)
+                    roshi_results = (roshi_joints_centered, roshi_T_w, roshi_vv)
 
         # --- EgoAllo original mesh pre-computation ---
         ego_visible = show_ego and ego_mesh_handle is not None
@@ -1248,18 +1248,18 @@ def main() -> int:
                 if s_vv is not None:
                     sync_mesh_handle.vertices = s_vv
 
-            if tto_results is not None:
-                t_jc, t_Tw, t_vv = tto_results
-                if tto_joints_handle is not None:
-                    tto_joints_handle.points = t_jc.astype(np.float32)
+            if roshi_results is not None:
+                t_jc, t_Tw, t_vv = roshi_results
+                if roshi_joints_handle is not None:
+                    roshi_joints_handle.points = t_jc.astype(np.float32)
                 for name, idx in SMPLX_JOINT_INDEX_MAP.items():
-                    if name in tto_joint_frames:
+                    if name in roshi_joint_frames:
                         Rg = t_Tw[idx, :3, :3].astype(np.float64)
                         pos = t_jc[idx].astype(np.float64)
-                        tto_joint_frames[name].wxyz = tf.SO3.from_matrix(Rg).wxyz
-                        tto_joint_frames[name].position = pos
-                if tto_mesh_handle is not None and t_vv is not None:
-                    tto_mesh_handle.vertices = t_vv
+                        roshi_joint_frames[name].wxyz = tf.SO3.from_matrix(Rg).wxyz
+                        roshi_joint_frames[name].position = pos
+                if roshi_mesh_handle is not None and t_vv is not None:
+                    roshi_mesh_handle.vertices = t_vv
 
             if ego_results is not None:
                 e_jc, e_Tw, e_vv = ego_results

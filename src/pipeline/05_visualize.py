@@ -1,14 +1,14 @@
 """Multi-method pose visualization with third-person RGB.
 
 Displays side-by-side comparisons of different pose estimation methods:
-  - Ground truth (SMPLX, orange)
-  - IMU-only reconstruction (blue)
-  - TTO predictions (purple)
+  - SAM-3D body estimation from third-person video (orange)
+  - IMU-only forward kinematics, no diffusion (blue)
+  - RoSHI predictions (purple)
   - EgoAllo predictions (magenta)
 
 Usage:
   python 05_visualize.py <session_dir>
-  python 05_visualize.py <session_dir> --no-imu --no-gt
+  python 05_visualize.py <session_dir> --no-imu --no-sam3d
 """
 
 from __future__ import annotations
@@ -69,9 +69,9 @@ def _get_viewer():
 # ── Colours & layout ────────────────────────────────────────────────────────
 
 METHODS = {
-    "gt":      {"color": (0.95, 0.55, 0.20), "x": -1.5, "label": "Ground Truth"},
-    "imu":     {"color": (0.35, 0.75, 0.95), "x":  0.0, "label": "IMU-only"},
-    "tto":     {"color": (0.60, 0.40, 0.95), "x":  1.5, "label": "TTO"},
+    "sam3d":   {"color": (0.95, 0.55, 0.20), "x": -1.5, "label": "SAM-3D"},
+    "imu":     {"color": (0.35, 0.75, 0.95), "x":  0.0, "label": "IMU FK"},  # Pure forward kinematics from calibrated IMUs, no diffusion
+    "roshi":   {"color": (0.60, 0.40, 0.95), "x":  1.5, "label": "RoSHI"},
     "egoallo": {"color": (0.90, 0.40, 0.85), "x":  3.0, "label": "EgoAllo"},
 }
 
@@ -89,13 +89,13 @@ class Args:
     egoallo_csv: Optional[Path] = None
     """EgoAllo prediction CSV. Auto-discovered from <session>/egoallo/ if None."""
 
-    tto_csv: Optional[Path] = None
-    """TTO prediction CSV. Auto-discovered from <session>/tto/ if None."""
+    roshi_csv: Optional[Path] = None
+    """RoSHI prediction CSV. Auto-discovered from <session>/roshi/ if None."""
 
     show_imu: bool = True
-    show_gt: bool = True
+    show_sam3d: bool = True
     show_egoallo: bool = True
-    show_tto: bool = True
+    show_roshi: bool = True
     show_rgb: bool = True
 
     rate_hz: float = 30.0
@@ -107,8 +107,8 @@ class Args:
 
 # ── Data loaders ────────────────────────────────────────────────────────────
 
-def _load_gt(session_dir: Path) -> Optional[object]:
-    """Load SMPLX ground truth."""
+def _load_sam3d(session_dir: Path) -> Optional[object]:
+    """Load SAM-3D SMPLX body estimation from smpl_output/."""
     viewer = _get_viewer()
     return viewer.load_smpl_ground_truth(session_dir)
 
@@ -121,10 +121,10 @@ def _discover_csv(session_dir: Path, subdir: str) -> Optional[Path]:
     return csvs[0] if csvs else None
 
 
-def _load_tto_or_egoallo(csv_path: Path, num_joints: int) -> Tuple[Dict, List]:
-    """Load TTO/EgoAllo CSV → {utc_ns: (J,3,3)} and sorted timestamps."""
+def _load_csv_predictions(csv_path: Path, num_joints: int) -> Tuple[Dict, List]:
+    """Load RoSHI/EgoAllo CSV → {utc_ns: (J,3,3)} and sorted timestamps."""
     viewer = _get_viewer()
-    d = viewer.load_tto_local_rotations(csv_path, num_joints)
+    d = viewer.load_local_rotations_csv(csv_path, num_joints)
     t_sorted = sorted(d.keys())
     return d, t_sorted
 
@@ -175,31 +175,31 @@ def main(args: Args) -> None:
 
     # ── Load ground truth ───────────────────────────────────────────────────
     gt = None
-    if args.show_gt:
-        gt = _load_gt(session)
+    if args.show_sam3d:
+        gt = _load_sam3d(session)
         if gt is None:
-            print("Ground truth not found — skipping")
-            args.show_gt = False
+            print("SAM-3D data not found — skipping")
+            args.show_sam3d = False
         else:
-            print(f"Loaded ground truth ({len(gt.frame_id_to_index)} frames)")
+            print(f"Loaded SAM-3D ({len(gt.frame_id_to_index)} frames)")
 
-    # ── Load TTO predictions ────────────────────────────────────────────────
-    tto_dict, tto_t = None, []
-    if args.show_tto:
-        csv = args.tto_csv or _discover_csv(session, "tto")
+    # ── Load RoSHI predictions ────────────────────────────────────────────────
+    roshi_dict, roshi_t = None, []
+    if args.show_roshi:
+        csv = args.roshi_csv or _discover_csv(session, "roshi")
         if csv and csv.exists():
-            tto_dict, tto_t = _load_tto_or_egoallo(csv, model.num_joints)
-            print(f"Loaded TTO ({len(tto_t)} frames) from {csv.name}")
+            roshi_dict, roshi_t = _load_csv_predictions(csv, model.num_joints)
+            print(f"Loaded RoSHI ({len(roshi_t)} frames) from {csv.name}")
         else:
-            print("TTO CSV not found — skipping")
-            args.show_tto = False
+            print("RoSHI CSV not found — skipping")
+            args.show_roshi = False
 
     # ── Load EgoAllo predictions ────────────────────────────────────────────
     ego_dict, ego_t = None, []
     if args.show_egoallo:
         csv = args.egoallo_csv or _discover_csv(session, "egoallo")
         if csv and csv.exists():
-            ego_dict, ego_t = _load_tto_or_egoallo(csv, model.num_joints)
+            ego_dict, ego_t = _load_csv_predictions(csv, model.num_joints)
             print(f"Loaded EgoAllo ({len(ego_t)} frames) from {csv.name}")
         else:
             print("EgoAllo CSV not found — skipping")
@@ -274,7 +274,7 @@ def main(args: Args) -> None:
                 gt_pelvis_G0 = gt.joint_rotations_local[gidx, 0]
                 break
 
-    # Alignment: rotate IMU/TTO/EgoAllo to match GT pelvis at frame 0
+    # Alignment: rotate IMU/RoSHI/EgoAllo to match GT pelvis at frame 0
     align_R = np.eye(3)
     if gt_pelvis_G0 is not None and imu_pelvis_G0 is not None:
         align_R = gt_pelvis_G0 @ imu_pelvis_G0.T
@@ -356,7 +356,7 @@ def main(args: Args) -> None:
     def _compute_csv_pose(
         local_dict: Dict, t_sorted: List[int], t_ns: int
     ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-        """Compute pose from TTO/EgoAllo CSV predictions."""
+        """Compute pose from RoSHI/EgoAllo CSV predictions."""
         nearest = _get_nearest(t_sorted, t_ns)
         if nearest is None or abs(nearest - t_ns) > 100_000_000:  # 100ms
             return None
@@ -385,7 +385,7 @@ def main(args: Args) -> None:
         if args.show_imu:
             results["imu"] = _compute_imu_pose(fi)
 
-        if args.show_gt and gt is not None and frame_id >= 0:
+        if args.show_sam3d and gt is not None and frame_id >= 0:
             gidx = gt.index_of(frame_id)
             if gidx is not None:
                 gt_local = gt.joint_rotations_local[gidx]
@@ -393,14 +393,14 @@ def main(args: Args) -> None:
                     model, gt_local, betas, compute_vertices=True,
                     v_shaped=v_shaped, j_tpose=j_tpose,
                 )
-                results["gt"] = (v, j)
+                results["sam3d"] = (v, j)
             else:
-                results["gt"] = None
-        elif args.show_gt:
-            results["gt"] = None
+                results["sam3d"] = None
+        elif args.show_sam3d:
+            results["sam3d"] = None
 
-        if args.show_tto and tto_dict:
-            results["tto"] = _compute_csv_pose(tto_dict, tto_t, t_ns)
+        if args.show_roshi and roshi_dict:
+            results["roshi"] = _compute_csv_pose(roshi_dict, roshi_t, t_ns)
 
         if args.show_egoallo and ego_dict:
             results["egoallo"] = _compute_csv_pose(ego_dict, ego_t, t_ns)
