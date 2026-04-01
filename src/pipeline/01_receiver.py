@@ -782,9 +782,9 @@ def main() -> int:
 
     # Model paths
     parser.add_argument("--sam-checkpoint", type=str,
-                        default=str(_PROJECT_ROOT / "sam-3d-body/checkpoints/sam-3d-body-dinov3/model.ckpt"))
+                        default=str(_PROJECT_ROOT / "model/sam3d/sam-3d-body-dinov3/model.ckpt"))
     parser.add_argument("--sam-mhr-model", type=str,
-                        default=str(_PROJECT_ROOT / "MHR/assets/mhr_model.pt"))
+                        default=str(_PROJECT_ROOT / "model/mhr/mhr_model.pt"))
     parser.add_argument("--smplx-model", type=str,
                         default=str(_PROJECT_ROOT / "model/smplx/SMPLX_NEUTRAL.npz"))
     parser.add_argument("--device", type=str, default="cuda")

@@ -31,15 +31,16 @@ See [INSTALL.md](INSTALL.md) for instructions for python environment setup and m
 For a quick start, run our demo script for model inference and visualization with models from [Hugging Face](https://huggingface.co/facebook) (please make sure to follow [INSTALL.md](INSTALL.md) to request access to our checkpoints.).
 
 ```bash
-# Download assets from HuggingFace
-hf download facebook/sam-3d-body-dinov3 --local-dir checkpoints/sam-3d-body-dinov3
+# Download checkpoint to the unified model directory (from repo root)
+huggingface-cli download facebook/sam-3d-body-dinov3 \
+    --local-dir ../model/sam3d/sam-3d-body-dinov3
 
 # Run demo script
 python demo.py \
     --image_folder <path_to_images> \
     --output_folder <path_to_output> \
-    --checkpoint_path ./checkpoints/sam-3d-body-dinov3/model.ckpt \
-    --mhr_path ./checkpoints/sam-3d-body-dinov3/assets/mhr_model.pt
+    --checkpoint_path ../model/sam3d/sam-3d-body-dinov3/model.ckpt \
+    --mhr_path ../model/sam3d/sam-3d-body-dinov3/assets/mhr_model.pt
 ```
 
 You can also try the following lines of code with models loaded directly from [Hugging Face](https://huggingface.co/facebook)
