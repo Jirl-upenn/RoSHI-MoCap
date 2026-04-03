@@ -133,6 +133,8 @@ class CalibrationConfig:
     calib_utc_start_ns: Optional[int] = None
     calib_utc_end_ns: Optional[int] = None
     calib_frames_csv: Optional[Path] = None
+    force_rerun: bool = False
+    skip_until: Optional[str] = None  # "sam3d", "mhr", "imu"
 
 
 @dataclass
@@ -347,81 +349,136 @@ class ROSHICalibrationReceiver:
     # Calibration Pipeline
     # ─────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _step_complete(color_dir: Path, body_data: Path, smpl_out: Path, step: str) -> bool:
+        """Check whether a pipeline step has already produced complete outputs.
+
+        Completeness is defined by output count matching the number of input
+        frames so that partially-finished runs are detected and re-run.
+        """
+        n_frames = len(list(color_dir.glob("*.jpg"))) + len(list(color_dir.glob("*.png")))
+        if n_frames == 0:
+            return False
+
+        if step == "sam3d":
+            n_npz = len(list(body_data.glob("*.npz")))
+            return n_npz >= n_frames
+        elif step == "mhr":
+            per_frame = smpl_out / "per_frame"
+            if not per_frame.exists():
+                return False
+            n_smpl = len(list(per_frame.glob("*.npz")))
+            return n_smpl >= n_frames
+        return False
+
+    def _should_skip(self, step: str, color_dir: Path, body_data: Path, smpl_out: Path) -> bool:
+        """Decide whether *step* can be skipped.
+
+        A step is skipped when:
+          1. --force-rerun is NOT set, AND
+          2. either --skip-until names a later step, OR the step's outputs are
+             already complete (count matches input frames).
+        """
+        cfg = self.calibration
+        if cfg.force_rerun:
+            return False
+
+        step_order = ["prepare", "sam3d", "mhr", "imu"]
+        if cfg.skip_until and cfg.skip_until in step_order:
+            if step_order.index(step) < step_order.index(cfg.skip_until):
+                return True
+
+        if step in ("sam3d", "mhr"):
+            return self._step_complete(color_dir, body_data, smpl_out, step)
+        return False
+
     def _run_calibration(self, session: Path) -> None:
         cfg = self.calibration
-
-        # 0) Prepare session
-        print("\n[1/4] Preparing session...")
-        video_path = session / "video.mp4"
-        if video_path.exists() and video_path.stat().st_size == 0:
-            raise RuntimeError(
-                f"Received empty video file (0 bytes): {video_path}\n"
-                "This usually means the iOS app did not successfully write the mp4 before sending.\n"
-                "Check the iOS console logs for AVAssetWriter errors and ensure the recording runs long enough."
-            )
-        prepare_session(session)
 
         color_dir = session / "color"
         body_data = session / "body_data"
         smpl_out = session / "smpl_output"
         cam_json = session / "meta" / "camera.json"
 
+        # 0) Prepare session
+        if self._should_skip("prepare", color_dir, body_data, smpl_out):
+            print("\n[1/4] Preparing session... SKIPPED (--skip-until)")
+        else:
+            print("\n[1/4] Preparing session...")
+            video_path = session / "video.mp4"
+            if video_path.exists() and video_path.stat().st_size == 0:
+                raise RuntimeError(
+                    f"Received empty video file (0 bytes): {video_path}\n"
+                    "This usually means the iOS app did not successfully write the mp4 before sending.\n"
+                    "Check the iOS console logs for AVAssetWriter errors and ensure the recording runs long enough."
+                )
+            prepare_session(session)
+
         for d in [body_data, smpl_out]:
             d.mkdir(exist_ok=True)
 
         # 1) SAM-3D-Body (MHR)
-        print("\n[2/4] Running SAM-3D-Body...")
-        sam_demo = _PROJECT_ROOT / "sam-3d-body" / "demo.py"
-        sam_env = os.environ.copy()
-        sam_env["MOMENTUM_ENABLED"] = ""  # Disable PyMomentum for Python 3.12
-        sam_env["PYTHONPATH"] = os.pathsep.join([str(_PROJECT_ROOT), str(_PROJECT_ROOT / "MHR")])
-
-        def _run_sam_3d_body(*, output_folder: Path) -> None:
-            sam_cmd = [
-                cfg.sam_python, str(sam_demo),
-                "--image_folder", str(color_dir),
-                "--checkpoint_path", str(cfg.sam_checkpoint),
-                "--output_folder", str(output_folder),
-                "--data_folder", str(body_data),
-                "--mhr_path", str(cfg.sam_mhr_model),
-                "--camera_json", str(cam_json),
-                "--fov_name", "",  # Use camera.json intrinsics, not FOV estimator
-                "--subject_only",
-            ]
-            subprocess.run(sam_cmd, cwd=str(_PROJECT_ROOT), env=sam_env, check=True)
-
-        if cfg.save_body_vis:
-            body_vis = session / "body_vis"
-            body_vis.mkdir(exist_ok=True)
-            _run_sam_3d_body(output_folder=body_vis)
+        if self._should_skip("sam3d", color_dir, body_data, smpl_out):
+            n_npz = len(list(body_data.glob("*.npz")))
+            print(f"\n[2/4] Running SAM-3D-Body... SKIPPED ({n_npz} npz files already exist)")
         else:
-            # By default, avoid persisting visualization renders; write them to a temp dir and delete.
-            with tempfile.TemporaryDirectory(prefix=f"roshi_body_vis_{session.name}_") as tmp_vis:
-                _run_sam_3d_body(output_folder=Path(tmp_vis))
+            print("\n[2/4] Running SAM-3D-Body...")
+            sam_demo = _PROJECT_ROOT / "sam-3d-body" / "demo.py"
+            sam_env = os.environ.copy()
+            sam_env["MOMENTUM_ENABLED"] = ""  # Disable PyMomentum for Python 3.12
+            sam_env["PYTHONPATH"] = os.pathsep.join([str(_PROJECT_ROOT), str(_PROJECT_ROOT / "MHR")])
 
-        print(f"  ✅ SAM outputs: {len(list(body_data.glob('*.npz')))} npz files")
+            def _run_sam_3d_body(*, output_folder: Path) -> None:
+                sam_cmd = [
+                    cfg.sam_python, str(sam_demo),
+                    "--image_folder", str(color_dir),
+                    "--checkpoint_path", str(cfg.sam_checkpoint),
+                    "--output_folder", str(output_folder),
+                    "--data_folder", str(body_data),
+                    "--mhr_path", str(cfg.sam_mhr_model),
+                    "--camera_json", str(cam_json),
+                    "--fov_name", "",  # Use camera.json intrinsics, not FOV estimator
+                    "--subject_only",
+                ]
+                subprocess.run(sam_cmd, cwd=str(_PROJECT_ROOT), env=sam_env, check=True)
+
+            if cfg.save_body_vis:
+                body_vis = session / "body_vis"
+                body_vis.mkdir(exist_ok=True)
+                _run_sam_3d_body(output_folder=body_vis)
+            else:
+                # By default, avoid persisting visualization renders; write them to a temp dir and delete.
+                with tempfile.TemporaryDirectory(prefix=f"roshi_body_vis_{session.name}_") as tmp_vis:
+                    _run_sam_3d_body(output_folder=Path(tmp_vis))
+
+            print(f"  ✅ SAM outputs: {len(list(body_data.glob('*.npz')))} npz files")
 
         # 2) MHR -> SMPL(X)
-        print("\n[3/4] Converting MHR to SMPL...")
-        convert_script = _PROJECT_ROOT / "MHR" / "tools" / "mhr_smpl_conversion" / "convert_mhr_to_smpl.py"
-        conv_cwd = str(_PROJECT_ROOT)  # Assets path passed via --mhr-assets
+        if self._should_skip("mhr", color_dir, body_data, smpl_out):
+            per_frame = smpl_out / "per_frame"
+            n_smpl = len(list(per_frame.glob("*.npz")))
+            print(f"\n[3/4] Converting MHR to SMPL... SKIPPED ({n_smpl} npz files already exist)")
+        else:
+            print("\n[3/4] Converting MHR to SMPL...")
+            convert_script = _PROJECT_ROOT / "MHR" / "tools" / "mhr_smpl_conversion" / "convert_mhr_to_smpl.py"
+            conv_cwd = str(_PROJECT_ROOT)  # Assets path passed via --mhr-assets
 
-        conv_env = os.environ.copy()
-        conv_env["PYTHONPATH"] = os.pathsep.join([str(_PROJECT_ROOT), str(_PROJECT_ROOT / "MHR")])
+            conv_env = os.environ.copy()
+            conv_env["PYTHONPATH"] = os.pathsep.join([str(_PROJECT_ROOT), str(_PROJECT_ROOT / "MHR")])
 
-        mhr_assets = _PROJECT_ROOT / "model" / "mhr"
-        conv_cmd = [
-            cfg.mhr_python, str(convert_script),
-            "--input", str(body_data),
-            "--output", str(smpl_out),
-            "--smplx", str(cfg.smplx_model),
-            "--device", cfg.device,
-            "--batch-size", str(cfg.batch_size),
-            "--mhr-assets", str(mhr_assets),
-        ]
-        subprocess.run(conv_cmd, cwd=str(conv_cwd), env=conv_env, check=True)
-        per_frame = smpl_out / "per_frame"
-        print(f"  ✅ SMPL outputs: {len(list(per_frame.glob('*.npz')))} npz files")
+            mhr_assets = _PROJECT_ROOT / "model" / "mhr"
+            conv_cmd = [
+                cfg.mhr_python, str(convert_script),
+                "--input", str(body_data),
+                "--output", str(smpl_out),
+                "--smplx", str(cfg.smplx_model),
+                "--device", cfg.device,
+                "--batch-size", str(cfg.batch_size),
+                "--mhr-assets", str(mhr_assets),
+            ]
+            subprocess.run(conv_cmd, cwd=str(conv_cwd), env=conv_env, check=True)
+            per_frame = smpl_out / "per_frame"
+            print(f"  ✅ SMPL outputs: {len(list(per_frame.glob('*.npz')))} npz files")
 
         # 3) Bone->sensor calibration
         print("\n[4/4] Computing bone->sensor offsets...")
@@ -798,6 +855,12 @@ def main() -> int:
     parser.add_argument("--calib-utc-end-ns", type=int, default=None, help="Only use frames.csv timestamps <= this for IMU calibration.")
     parser.add_argument("--calib-frames-csv", type=str, default=None, help="Optional path to frames.csv used for utc filtering (default: session_dir/frames.csv).")
 
+    # Step skip / resume
+    parser.add_argument("--force-rerun", action="store_true",
+                        help="Force re-run all steps even if outputs already exist.")
+    parser.add_argument("--skip-until", type=str, default=None, choices=["sam3d", "mhr", "imu"],
+                        help="Skip steps before this one (e.g. --skip-until mhr skips prepare+sam3d).")
+
     args = parser.parse_args()
 
     # Auto-detect Python executables
@@ -828,6 +891,8 @@ def main() -> int:
         calib_utc_start_ns=args.calib_utc_start_ns,
         calib_utc_end_ns=args.calib_utc_end_ns,
         calib_frames_csv=Path(args.calib_frames_csv) if args.calib_frames_csv else None,
+        force_rerun=args.force_rerun,
+        skip_until=args.skip_until,
     )
 
     # Cluster upload config
