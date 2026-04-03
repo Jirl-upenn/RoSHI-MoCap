@@ -404,11 +404,12 @@ class ROSHICalibrationReceiver:
         # 2) MHR -> SMPL(X)
         print("\n[3/4] Converting MHR to SMPL...")
         convert_script = _PROJECT_ROOT / "MHR" / "tools" / "mhr_smpl_conversion" / "convert_mhr_to_smpl.py"
-        conv_cwd = convert_script.parent  # IMPORTANT: must run from this dir for relative assets
+        conv_cwd = str(_PROJECT_ROOT)  # Assets path passed via --mhr-assets
 
         conv_env = os.environ.copy()
         conv_env["PYTHONPATH"] = os.pathsep.join([str(_PROJECT_ROOT), str(_PROJECT_ROOT / "MHR")])
 
+        mhr_assets = _PROJECT_ROOT / "model" / "mhr"
         conv_cmd = [
             cfg.mhr_python, str(convert_script),
             "--input", str(body_data),
@@ -416,6 +417,7 @@ class ROSHICalibrationReceiver:
             "--smplx", str(cfg.smplx_model),
             "--device", cfg.device,
             "--batch-size", str(cfg.batch_size),
+            "--mhr-assets", str(mhr_assets),
         ]
         subprocess.run(conv_cmd, cwd=str(conv_cwd), env=conv_env, check=True)
         per_frame = smpl_out / "per_frame"

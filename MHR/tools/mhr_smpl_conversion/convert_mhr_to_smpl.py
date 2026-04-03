@@ -104,7 +104,13 @@ def main():
         action="store_true",
         help="Also save SMPL meshes as PLY files"
     )
-    
+    parser.add_argument(
+        "--mhr-assets",
+        type=str,
+        default=None,
+        help="Path to MHR assets folder (default: MHR/assets/ relative to package)"
+    )
+
     args = parser.parse_args()
     
     # Create output directory
@@ -124,7 +130,10 @@ def main():
     print(f"Loading models on {args.device}...")
     device = torch.device(args.device)
     
-    mhr_model = MHR.from_files(lod=1, device=device)
+    mhr_kwargs = {"lod": 1, "device": device}
+    if args.mhr_assets:
+        mhr_kwargs["folder"] = Path(args.mhr_assets)
+    mhr_model = MHR.from_files(**mhr_kwargs)
     smplx_model = smplx.SMPLX(
         model_path=args.smplx,
         gender="neutral",
