@@ -500,7 +500,6 @@ def visualize_traj_and_hand_detections(
     gui_smpl_opacity = server.gui.add_slider(
         "SMPL Opacity", initial_value=1.0, min=0.0, max=1.0, step=0.01
     )
-    )
 
     @gui_smpl_opacity.on_update
     def _(_) -> None:
