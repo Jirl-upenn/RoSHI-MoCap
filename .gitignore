@@ -107,9 +107,12 @@ outputdata/
 roshi_demo/
 
 # External model assets (must be downloaded separately)
-assets/
+/assets/
 MHR/assets/
 MHR/assets.zip
+# Keep MHR conversion tool assets (mapping files, masks, etc.)
+!MHR/tools/mhr_smpl_conversion/assets/
+!MHR/tools/mhr_smpl_conversion/assets/*
 MHR/model/
 MHR/.github/
 MHR/tools/mhr_smpl_conversion/output_dir/

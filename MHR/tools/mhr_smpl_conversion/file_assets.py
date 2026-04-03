@@ -12,15 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os as _os
+
+_ASSETS_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "assets")
+
 # Part mask files
-HEAD_HAND_MASK_FILE = "./assets/head_hand_mask.npz"
-MHR_FACE_MASK_FILE = "./assets/mhr_face_mask.ply"
+HEAD_HAND_MASK_FILE = _os.path.join(_ASSETS_DIR, "head_hand_mask.npz")
+MHR_FACE_MASK_FILE = _os.path.join(_ASSETS_DIR, "mhr_face_mask.ply")
 
 # Subsampled mhr vertices
-SUBSAMPLED_VERTEX_INDICES_FILE = "./assets/subsampled_vertex_indices.npy"
+SUBSAMPLED_VERTEX_INDICES_FILE = _os.path.join(_ASSETS_DIR, "subsampled_vertex_indices.npy")
 
 # Model template mesh mapping files
-SMPL2MHR_MAPPING_FILE = "./assets/smpl2mhr_mapping.npz"
-SMPLX2MHR_MAPPING_FILE = "./assets/smplx2mhr_mapping.npz"
-MHR2SMPL_MAPPING_FILE = "./assets/mhr2smpl_mapping.npz"
-MHR2SMPLX_MAPPING_FILE = "./assets/mhr2smplx_mapping.npz"
+SMPL2MHR_MAPPING_FILE = _os.path.join(_ASSETS_DIR, "smpl2mhr_mapping.npz")
+SMPLX2MHR_MAPPING_FILE = _os.path.join(_ASSETS_DIR, "smplx2mhr_mapping.npz")
+MHR2SMPL_MAPPING_FILE = _os.path.join(_ASSETS_DIR, "mhr2smpl_mapping.npz")
+MHR2SMPLX_MAPPING_FILE = _os.path.join(_ASSETS_DIR, "mhr2smplx_mapping.npz")
