@@ -466,6 +466,17 @@ class ROSHICalibrationReceiver:
             conv_env = os.environ.copy()
             conv_env["PYTHONPATH"] = os.pathsep.join([str(_PROJECT_ROOT), str(_PROJECT_ROOT / "MHR")])
 
+            # Auto-detect PyTorch lib path for pymomentum's libtorch dependency
+            torch_lib = subprocess.run(
+                [cfg.mhr_python, "-c", "import torch; print(torch.__path__[0] + '/lib')"],
+                capture_output=True, text=True,
+            )
+            if torch_lib.returncode == 0:
+                torch_lib_path = torch_lib.stdout.strip()
+                conv_env["LD_LIBRARY_PATH"] = os.pathsep.join(
+                    filter(None, [torch_lib_path, conv_env.get("LD_LIBRARY_PATH", "")])
+                )
+
             mhr_assets = _PROJECT_ROOT / "model" / "mhr"
             conv_cmd = [
                 cfg.mhr_python, str(convert_script),
