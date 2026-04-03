@@ -222,8 +222,6 @@ def run_sampling_with_stitching(
             body_model=body_model,
             guidance_mode=guidance_mode,
             phase="post",
-            hamer_detections=hamer_detections,
-            aria_detections=aria_detections,
             aria_all_hand_detections=aria_all_hand_detections,
             imu_readings=imu_readings,
             verbose=guidance_verbose,
