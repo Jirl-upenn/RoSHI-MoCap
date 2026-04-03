@@ -11,20 +11,42 @@ Receives video + metadata from iOS app, optionally runs calibration pipeline:
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
+
+# ── Auto re-exec under the roshi conda environment ──────────────────
+_ROSHI_ENV = "roshi"
+
+def _reexec_in_conda(env_name: str) -> None:
+    """If not already running inside *env_name*, re-exec this script with the
+    correct conda Python.  Searches both miniconda3 and anaconda3."""
+    current = Path(sys.executable).resolve()
+    for base in ("miniconda3", "anaconda3"):
+        candidate = Path.home() / base / "envs" / env_name / "bin" / "python"
+        if candidate.exists():
+            target = candidate.resolve()
+            if current == target:
+                return  # already in the right env
+            print(f"⚡ Re-launching under conda env '{env_name}' ({target})")
+            os.execv(str(target), [str(target)] + sys.argv)
+    # env not found – continue with current interpreter
+    print(f"⚠️  conda env '{env_name}' not found, continuing with {current}")
+
+_reexec_in_conda(_ROSHI_ENV)
+# ─────────────────────────────────────────────────────────────────────
+
 import argparse
 import json
-import os
 import socket
 import struct
 import subprocess
-import sys
 import tempfile
 import threading
 import uuid as uuid_mod
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Dict, List, Optional
 
 from zeroconf import ServiceInfo, Zeroconf
