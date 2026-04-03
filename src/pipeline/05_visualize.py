@@ -282,7 +282,7 @@ def main(args: Args) -> None:
     # ── Viser setup ─────────────────────────────────────────────────────────
     server = viser.ViserServer(port=args.port)
     server.gui.configure_theme(dark_mode=True)
-    server.scene.set_up_direction("y")
+    server.scene.set_up_direction("+y")
     server.scene.add_grid("/grid", position=(0, -0.01, 0), width=6, height=6)
 
     # Create meshes for each enabled method
