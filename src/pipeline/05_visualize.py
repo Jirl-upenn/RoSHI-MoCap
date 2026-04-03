@@ -121,6 +121,72 @@ def _discover_csv(session_dir: Path, subdir: str) -> Optional[Path]:
     return csvs[0] if csvs else None
 
 
+def _discover_npz(session_dir: Path, guidance_mode: str) -> Optional[Path]:
+    """Find an inference NPZ in egoallo_outputs/ matching the guidance mode."""
+    d = session_dir / "egoallo_outputs"
+    if not d.is_dir():
+        return None
+    npzs = sorted(d.glob(f"{guidance_mode}_*.npz"))
+    return npzs[-1] if npzs else None
+
+
+def _quat_wxyz_to_rotmat(q: np.ndarray) -> np.ndarray:
+    """Convert wxyz quaternion(s) to 3x3 rotation matrix/matrices."""
+    from scipy.spatial.transform import Rotation
+    # scipy expects xyzw
+    if q.ndim == 1:
+        return Rotation.from_quat(q[[1, 2, 3, 0]]).as_matrix()
+    orig_shape = q.shape[:-1]
+    flat = q.reshape(-1, 4)
+    mats = Rotation.from_quat(flat[:, [1, 2, 3, 0]]).as_matrix()
+    return mats.reshape(*orig_shape, 3, 3)
+
+
+def _load_npz_predictions(npz_path: Path, num_smplx_joints: int) -> Tuple[Dict, List]:
+    """Load inference NPZ → {utc_ns: (J,3,3)} using SMPL-H→SMPL-X joint mapping.
+
+    NPZ keys: body_quats (samples,T,21,4), left/right_hand_quats (samples,T,15,4),
+              Ts_world_root (samples,T,7), timestamps_ns (T,).
+    """
+    data = np.load(npz_path)
+    timestamps = data["timestamps_ns"]
+    # Use first sample
+    body_q = data["body_quats"][0]       # (T, 21, 4) wxyz
+    lhand_q = data["left_hand_quats"][0]  # (T, 15, 4)
+    rhand_q = data["right_hand_quats"][0] # (T, 15, 4)
+    Ts_root = data["Ts_world_root"][0]    # (T, 7) wxyz_xyz
+
+    T = len(timestamps)
+    result = {}
+
+    for t_idx in range(T):
+        # Build SMPL-X local rotations (J, 3, 3) — identity by default
+        local = np.zeros((num_smplx_joints, 3, 3), dtype=np.float32)
+        for j in range(num_smplx_joints):
+            local[j] = np.eye(3, dtype=np.float32)
+
+        # Root (joint 0) from Ts_world_root
+        root_wxyz = Ts_root[t_idx, :4]
+        local[0] = _quat_wxyz_to_rotmat(root_wxyz)
+
+        # Body joints 1-21 → SMPL-X joints 1-21
+        body_mats = _quat_wxyz_to_rotmat(body_q[t_idx])  # (21, 3, 3)
+        local[1:22] = body_mats
+
+        # Left hand joints → SMPL-X joints 25-39
+        lhand_mats = _quat_wxyz_to_rotmat(lhand_q[t_idx])  # (15, 3, 3)
+        local[25:40] = lhand_mats
+
+        # Right hand joints → SMPL-X joints 40-54
+        rhand_mats = _quat_wxyz_to_rotmat(rhand_q[t_idx])  # (15, 3, 3)
+        local[40:55] = rhand_mats
+
+        result[int(timestamps[t_idx])] = local
+
+    t_sorted = sorted(result.keys())
+    return result, t_sorted
+
+
 def _load_csv_predictions(csv_path: Path, num_joints: int) -> Tuple[Dict, List]:
     """Load RoSHI/EgoAllo CSV → {utc_ns: (J,3,3)} and sorted timestamps."""
     viewer = _get_viewer()
@@ -191,8 +257,13 @@ def main(args: Args) -> None:
             roshi_dict, roshi_t = _load_csv_predictions(csv, model.num_joints)
             print(f"Loaded RoSHI ({len(roshi_t)} frames) from {csv.name}")
         else:
-            print("RoSHI CSV not found — skipping")
-            args.show_roshi = False
+            npz = _discover_npz(session, "roshi")
+            if npz:
+                roshi_dict, roshi_t = _load_npz_predictions(npz, model.num_joints)
+                print(f"Loaded RoSHI ({len(roshi_t)} frames) from {npz.name}")
+            else:
+                print("RoSHI predictions not found — skipping")
+                args.show_roshi = False
 
     # ── Load EgoAllo predictions ────────────────────────────────────────────
     ego_dict, ego_t = None, []
@@ -202,8 +273,13 @@ def main(args: Args) -> None:
             ego_dict, ego_t = _load_csv_predictions(csv, model.num_joints)
             print(f"Loaded EgoAllo ({len(ego_t)} frames) from {csv.name}")
         else:
-            print("EgoAllo CSV not found — skipping")
-            args.show_egoallo = False
+            npz = _discover_npz(session, "egoallo")
+            if npz:
+                ego_dict, ego_t = _load_npz_predictions(npz, model.num_joints)
+                print(f"Loaded EgoAllo ({len(ego_t)} frames) from {npz.name}")
+            else:
+                print("EgoAllo predictions not found — skipping")
+                args.show_egoallo = False
 
     # ── Build timeline ──────────────────────────────────────────────────────
     # Load third-person RGB frames
@@ -314,7 +390,10 @@ def main(args: Args) -> None:
 
     @lru_cache(maxsize=64)
     def _load_rgb(path: str) -> np.ndarray:
-        img = Image.open(path).convert("RGB")
+        p = Path(path)
+        if not p.is_absolute():
+            p = session / p
+        img = Image.open(p).convert("RGB")
         w, h = img.size
         if w > args.video_max_width:
             ratio = args.video_max_width / w
