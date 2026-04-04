@@ -94,8 +94,11 @@ class Args:
 
     show_imu: bool = True
     show_sam3d: bool = True
-    show_egoallo: bool = True
-    show_roshi: bool = True
+    show_egoallo: bool = False
+    """Enable EgoAllo predictions (use --show-egoallo to enable)."""
+
+    show_roshi: bool = False
+    """Enable RoSHI predictions (use --show-roshi to enable)."""
     show_rgb: bool = True
 
     rate_hz: float = 30.0
@@ -122,12 +125,24 @@ def _discover_csv(session_dir: Path, subdir: str) -> Optional[Path]:
 
 
 def _discover_npz(session_dir: Path, guidance_mode: str) -> Optional[Path]:
-    """Find an inference NPZ in egoallo_outputs/ matching the guidance mode."""
+    """Find an inference NPZ in egoallo_outputs/ matching the guidance mode.
+
+    Only returns a file if it contains the expected keys (body_quats, etc.),
+    so half-finished or unrelated NPZ files are skipped.
+    """
     d = session_dir / "egoallo_outputs"
     if not d.is_dir():
         return None
     npzs = sorted(d.glob(f"{guidance_mode}_*.npz"))
-    return npzs[-1] if npzs else None
+    required_keys = {"body_quats", "Ts_world_root", "timestamps_ns"}
+    for npz_path in reversed(npzs):  # newest first
+        try:
+            with np.load(npz_path) as data:
+                if required_keys.issubset(data.files):
+                    return npz_path
+        except Exception:
+            continue
+    return None
 
 
 def _quat_wxyz_to_rotmat(q: np.ndarray) -> np.ndarray:
@@ -156,6 +171,10 @@ def _load_npz_predictions(npz_path: Path, num_smplx_joints: int) -> Tuple[Dict, 
     rhand_q = data["right_hand_quats"][0] # (T, 15, 4)
     Ts_root = data["Ts_world_root"][0]    # (T, 7) wxyz_xyz
 
+    # Aria world frame is Z-up; visualization uses camera coords (Y-down, -y up).
+    # Convert root rotation: Z-up (x-right,y-fwd,z-up) → cam (x-right,y-down,z-fwd)
+    R_zup_to_cam = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=np.float64)
+
     T = len(timestamps)
     result = {}
 
@@ -165,9 +184,9 @@ def _load_npz_predictions(npz_path: Path, num_smplx_joints: int) -> Tuple[Dict, 
         for j in range(num_smplx_joints):
             local[j] = np.eye(3, dtype=np.float32)
 
-        # Root (joint 0) from Ts_world_root
+        # Root (joint 0) from Ts_world_root, converted from Z-up to camera frame
         root_wxyz = Ts_root[t_idx, :4]
-        local[0] = _quat_wxyz_to_rotmat(root_wxyz)
+        local[0] = (R_zup_to_cam @ _quat_wxyz_to_rotmat(root_wxyz)).astype(np.float32)
 
         # Body joints 1-21 → SMPL-X joints 1-21
         body_mats = _quat_wxyz_to_rotmat(body_q[t_idx])  # (21, 3, 3)
@@ -323,8 +342,9 @@ def main(args: Args) -> None:
     # ── IMU calibration offsets ─────────────────────────────────────────────
     B_R_imu = {}
     if calib:
-        # Fixed tag→IMU rotation (90° axes swap typical for RoSHI hardware)
-        T_R_IMU = np.array([[0, 0, -1], [-1, 0, 0], [0, 1, 0]], dtype=np.float64)
+        # Fixed Tag←IMU rotation: maps IMU sensor axes to AprilTag axes.
+        #   x_tag = -y_imu,  y_tag = -x_imu,  z_tag = -z_imu
+        T_R_IMU = np.array([[0, -1, 0], [-1, 0, 0], [0, 0, -1]], dtype=np.float64)
         for jname, B_R_tag in calib.items():
             B_R_imu[jname] = B_R_tag @ T_R_IMU
 
@@ -358,8 +378,9 @@ def main(args: Args) -> None:
     # ── Viser setup ─────────────────────────────────────────────────────────
     server = viser.ViserServer(port=args.port)
     server.gui.configure_theme(dark_mode=True)
-    server.scene.set_up_direction("+y")
-    server.scene.add_grid("/grid", position=(0, -0.01, 0), width=6, height=6)
+    server.scene.set_up_direction("-y")
+    # In OpenCV-like camera coordinates, +y points down, so put the ground at +y.
+    server.scene.add_grid("/grid", position=(0, 1.2, 0), width=6, height=6, plane="xz")
 
     # Create meshes for each enabled method
     identity_verts = v_shaped.copy()
@@ -378,9 +399,15 @@ def main(args: Args) -> None:
             opacity=0.6,
         )
 
-    # Legend
-    legend_parts = [f"{METHODS[m]['label']}" for m in active_methods]
-    server.gui.add_markdown("**Methods:** " + " | ".join(legend_parts))
+    # 3D labels above each mesh
+    label_handles = {}
+    for name in active_methods:
+        cfg = METHODS[name]
+        label_handles[name] = server.scene.add_label(
+            f"/{name}_label",
+            text=cfg["label"],
+            position=(cfg["x"], -0.3, 0.0),
+        )
 
     # RGB image display
     rgb_handle = None
@@ -495,6 +522,10 @@ def main(args: Args) -> None:
                 verts_c = verts - pelvis[None, :]
                 verts_c[:, 0] += METHODS[name]["x"]
                 mesh_handles[name].vertices = verts_c
+
+                # Update label position above the head
+                head_y = float(verts_c[:, 1].min()) - 0.15
+                label_handles[name].position = (METHODS[name]["x"], head_y, 0.0)
 
             # Update RGB
             if rgb_handle is not None and timeline_rgb[fi] is not None:

@@ -63,12 +63,12 @@ from hardware.imu_reader import IMUDataRecorder
 from utils.imu_id_mapping import IMU_ID_TO_JOINT
 from utils.session_preparation import prepare_session
 
-try:
-    from config_local import CLUSTER_HOST, CLUSTER_RECEIVED_RECORDINGS_DIR, DISABLE_ZEROCONF
-except ImportError:
-    CLUSTER_HOST = ""
-    CLUSTER_RECEIVED_RECORDINGS_DIR = ""
-    DISABLE_ZEROCONF = False
+# try:
+#     from config_local import CLUSTER_HOST, CLUSTER_RECEIVED_RECORDINGS_DIR, DISABLE_ZEROCONF
+# except ImportError:
+#     CLUSTER_HOST = ""
+#     CLUSTER_RECEIVED_RECORDINGS_DIR = ""
+#     DISABLE_ZEROCONF = False
 
 
 
@@ -159,65 +159,65 @@ class CalibrationConfig:
     skip_until: Optional[str] = None  # "sam3d", "mhr", "imu"
 
 
-@dataclass
-class ClusterConfig:
-    """Configuration for uploading sessions to a remote cluster."""
-    enabled: bool = False
-    host: str = ""
-    remote_dir: str = ""
-    auto_upload: bool = False
-    delete_local_after_upload: bool = False
-
-
-def _upload_to_cluster(session: Path, cluster: ClusterConfig) -> bool:
-    """Upload a session folder to the remote cluster using rsync.
-
-    Returns True if upload succeeded, False otherwise.
-    """
-    if not cluster.enabled:
-        return False
-
-    remote_path = f"{cluster.host}:{cluster.remote_dir}/"
-
-    print(f"\n📤 Uploading {session.name} to cluster...")
-    print(f"   Local:  {session}")
-    print(f"   Remote: {remote_path}{session.name}")
-
-    rsync_cmd = [
-        "rsync", "-avz", "--progress",
-        str(session) + "/",
-        f"{remote_path}{session.name}/",
-    ]
-
-    try:
-        subprocess.run(rsync_cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Upload failed (rsync exit {e.returncode}). Local files kept.")
-        return False
-    except FileNotFoundError:
-        print("❌ rsync not found. Please install rsync. Local files kept.")
-        return False
-
-    # Verify the remote copy exists before deleting local files.
-    verify_cmd = [
-        "ssh", cluster.host,
-        "test", "-d", f"{cluster.remote_dir}/{session.name}",
-    ]
-    try:
-        subprocess.run(verify_cmd, check=True, timeout=15)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
-        print(f"⚠️  Upload reported success but remote verification failed: {e}")
-        print("   Local files kept as a safety measure.")
-        return False
-
-    print(f"✅ Upload complete and verified: {session.name}")
-
-    if cluster.delete_local_after_upload:
-        import shutil
-        print(f"🗑️  Deleting local copy: {session}")
-        shutil.rmtree(session)
-
-    return True
+# @dataclass
+# class ClusterConfig:
+#     """Configuration for uploading sessions to a remote cluster."""
+#     enabled: bool = False
+#     host: str = ""
+#     remote_dir: str = ""
+#     auto_upload: bool = False
+#     delete_local_after_upload: bool = False
+#
+#
+# def _upload_to_cluster(session: Path, cluster: ClusterConfig) -> bool:
+#     """Upload a session folder to the remote cluster using rsync.
+#
+#     Returns True if upload succeeded, False otherwise.
+#     """
+#     if not cluster.enabled:
+#         return False
+#
+#     remote_path = f"{cluster.host}:{cluster.remote_dir}/"
+#
+#     print(f"\n📤 Uploading {session.name} to cluster...")
+#     print(f"   Local:  {session}")
+#     print(f"   Remote: {remote_path}{session.name}")
+#
+#     rsync_cmd = [
+#         "rsync", "-avz", "--progress",
+#         str(session) + "/",
+#         f"{remote_path}{session.name}/",
+#     ]
+#
+#     try:
+#         subprocess.run(rsync_cmd, check=True)
+#     except subprocess.CalledProcessError as e:
+#         print(f"❌ Upload failed (rsync exit {e.returncode}). Local files kept.")
+#         return False
+#     except FileNotFoundError:
+#         print("❌ rsync not found. Please install rsync. Local files kept.")
+#         return False
+#
+#     # Verify the remote copy exists before deleting local files.
+#     verify_cmd = [
+#         "ssh", cluster.host,
+#         "test", "-d", f"{cluster.remote_dir}/{session.name}",
+#     ]
+#     try:
+#         subprocess.run(verify_cmd, check=True, timeout=15)
+#     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+#         print(f"⚠️  Upload reported success but remote verification failed: {e}")
+#         print("   Local files kept as a safety measure.")
+#         return False
+#
+#     print(f"✅ Upload complete and verified: {session.name}")
+#
+#     if cluster.delete_local_after_upload:
+#         import shutil
+#         print(f"🗑️  Deleting local copy: {session}")
+#         shutil.rmtree(session)
+#
+#     return True
 
 
 def _find_conda_python(env_name: str) -> Optional[str]:
@@ -245,13 +245,13 @@ class ROSHICalibrationReceiver:
         imu_port: Optional[str] = None,
         num_imus: int = 9,
         calibration: CalibrationConfig = None,
-        cluster: ClusterConfig = None,
+        # cluster: ClusterConfig = None,
     ):
         self.port = port
         self.output_path = Path(output_dir).resolve()
         self.output_path.mkdir(parents=True, exist_ok=True)
         self.calibration = calibration
-        self.cluster = cluster or ClusterConfig()
+        # self.cluster = cluster or ClusterConfig()
 
         self.zeroconf = None
         self.service_info = None
@@ -762,15 +762,15 @@ class ROSHICalibrationReceiver:
                     except Exception as e:
                         print(f"\n❌ Calibration error: {e}")
 
-                if self.cluster.enabled:
-                    proceed_upload = self.cluster.auto_upload
-                    if not proceed_upload:
-                        proceed_upload = _yes_no_prompt(
-                            f"\nUpload {session.name} to cluster ({self.cluster.host})?",
-                            default=True,
-                        )
-                    if proceed_upload:
-                        _upload_to_cluster(session, self.cluster)
+                # if self.cluster.enabled:
+                #     proceed_upload = self.cluster.auto_upload
+                #     if not proceed_upload:
+                #         proceed_upload = _yes_no_prompt(
+                #             f"\nUpload {session.name} to cluster ({self.cluster.host})?",
+                #             default=True,
+                #         )
+                #     if proceed_upload:
+                #         _upload_to_cluster(session, self.cluster)
             elif session:
                 # Helpful debug summary for partial / invalid sessions
                 v_size = None
@@ -852,20 +852,20 @@ def main() -> int:
         help="Save SAM-3D-Body visualization renders to <session>/body_vis (default: disabled).",
     )
 
-    # --local convenience flag
-    parser.add_argument(
-        "--local",
-        action="store_true",
-        help="Local-receiver mode: enable cluster upload + auto-upload, skip calibration.",
-    )
-
-    # Cluster upload (enabled by --local)
-    parser.add_argument("--cluster-host", type=str, default=None,
-                        help="SSH host for cluster (default from config_local.py)")
-    parser.add_argument("--cluster-dir", type=str, default=None,
-                        help="Remote directory on cluster (default from config_local.py)")
-    parser.add_argument("--delete-after-upload", action="store_true",
-                        help="Delete local session folder after successful upload to cluster")
+    # # --local convenience flag
+    # parser.add_argument(
+    #     "--local",
+    #     action="store_true",
+    #     help="Local-receiver mode: enable cluster upload + auto-upload, skip calibration.",
+    # )
+    #
+    # # Cluster upload (enabled by --local)
+    # parser.add_argument("--cluster-host", type=str, default=None,
+    #                     help="SSH host for cluster (default from config_local.py)")
+    # parser.add_argument("--cluster-dir", type=str, default=None,
+    #                     help="Remote directory on cluster (default from config_local.py)")
+    # parser.add_argument("--delete-after-upload", action="store_true",
+    #                     help="Delete local session folder after successful upload to cluster")
 
     # Python executables (auto-detect from conda if not specified)
     parser.add_argument("--sam-python", type=str, default=None)
@@ -928,31 +928,31 @@ def main() -> int:
         skip_until=args.skip_until,
     )
 
-    # Cluster upload config
-    cluster_host = args.cluster_host or CLUSTER_HOST
-    cluster_dir = args.cluster_dir or CLUSTER_RECEIVED_RECORDINGS_DIR
-
-    cluster_cfg = ClusterConfig(
-        enabled=args.local,
-        host=cluster_host,
-        remote_dir=cluster_dir,
-        auto_upload=args.local,
-        delete_local_after_upload=args.delete_after_upload,
-    )
-
-    # --local convenience: upload to cluster, skip calibration
-    if args.local:
-        cfg.auto_calibrate = False
-        cfg.prompt = False
-
-    # Validate cluster config if upload is enabled
-    if cluster_cfg.enabled:
-        if not cluster_cfg.host:
-            print("Error: --cluster-host not specified and CLUSTER_HOST not set in config_local.py")
-            return 1
-        if not cluster_cfg.remote_dir:
-            print("Error: --cluster-dir not specified and CLUSTER_RECEIVED_RECORDINGS_DIR not set in config_local.py")
-            return 1
+    # # Cluster upload config
+    # cluster_host = args.cluster_host or CLUSTER_HOST
+    # cluster_dir = args.cluster_dir or CLUSTER_RECEIVED_RECORDINGS_DIR
+    #
+    # cluster_cfg = ClusterConfig(
+    #     enabled=args.local,
+    #     host=cluster_host,
+    #     remote_dir=cluster_dir,
+    #     auto_upload=args.local,
+    #     delete_local_after_upload=args.delete_after_upload,
+    # )
+    #
+    # # --local convenience: upload to cluster, skip calibration
+    # if args.local:
+    #     cfg.auto_calibrate = False
+    #     cfg.prompt = False
+    #
+    # # Validate cluster config if upload is enabled
+    # if cluster_cfg.enabled:
+    #     if not cluster_cfg.host:
+    #         print("Error: --cluster-host not specified and CLUSTER_HOST not set in config_local.py")
+    #         return 1
+    #     if not cluster_cfg.remote_dir:
+    #         print("Error: --cluster-dir not specified and CLUSTER_RECEIVED_RECORDINGS_DIR not set in config_local.py")
+    #         return 1
 
     # If --session is provided, run calibration directly on existing session
     if args.session:
@@ -968,7 +968,7 @@ def main() -> int:
             imu_port=None,
             num_imus=args.num_imus,
             calibration=cfg,
-            cluster=cluster_cfg,
+            # cluster=cluster_cfg,
         )
         try:
             receiver._run_calibration(session_path)
@@ -988,18 +988,18 @@ def main() -> int:
         imu_port=imu_port,
         num_imus=args.num_imus,
         calibration=cfg,
-        cluster=cluster_cfg,
+        # cluster=cluster_cfg,
     )
 
-    if cluster_cfg.enabled:
-        print(f"\n📤 Cluster upload enabled:")
-        print(f"   Host: {cluster_cfg.host}")
-        print(f"   Remote dir: {cluster_cfg.remote_dir}")
-        if cluster_cfg.auto_upload:
-            print("   Mode: Auto-upload (no prompts)")
-        if cluster_cfg.delete_local_after_upload:
-            print("   Local files will be deleted after upload")
-        print()
+    # if cluster_cfg.enabled:
+    #     print(f"\n📤 Cluster upload enabled:")
+    #     print(f"   Host: {cluster_cfg.host}")
+    #     print(f"   Remote dir: {cluster_cfg.remote_dir}")
+    #     if cluster_cfg.auto_upload:
+    #         print("   Mode: Auto-upload (no prompts)")
+    #     if cluster_cfg.delete_local_after_upload:
+    #         print("   Local files will be deleted after upload")
+    #     print()
 
     receiver.start()
     return 0
