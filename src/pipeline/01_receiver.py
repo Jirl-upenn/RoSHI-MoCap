@@ -515,7 +515,7 @@ class ROSHICalibrationReceiver:
 
         # 3) Bone->sensor calibration
         print("\n[4/4] Computing bone->sensor offsets...")
-        imu_calib = _PROJECT_ROOT / "02_imu_calibration.py"
+        imu_calib = _SRC_DIR / "pipeline" / "02_calibrate.py"
         out_json = session / "imu_calibration.json"
 
         calib_cmd = [
