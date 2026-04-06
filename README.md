@@ -20,7 +20,8 @@ see the [Installation Guide](https://roshi-mocap.github.io/documentation/pipelin
 | 2 | `02_calibrate.py` | Calibrate bone-to-sensor rotation offsets |
 | 3 | `03_sync.py` | Synchronize RGB + calibrated IMU data |
 | 4 | `04_inference.py` | EgoAllo diffusion-based pose estimation |
-| 5 | `05_visualize.py` | Multi-method visualization |
+| 5a | `05_visualize.py` | Visualize IMU FK and SAM results (no localization) |
+| 5b | `05_visualize_roshi.py` | Visualize RoSHI pipeline results |
 | 6 | `06_evaluate.py` | Evaluate against OptiTrack ground truth |
 
 All scripts are under `src/pipeline/`. See the
