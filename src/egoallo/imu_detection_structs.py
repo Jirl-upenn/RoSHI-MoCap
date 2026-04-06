@@ -56,6 +56,7 @@ class CorrespondedImuReadings(TensorDataclass):
         imu_readings_pkl_path: Path,
         target_timestamps_sec: tuple[float, ...],
         closed_loop_trajectory_csv_path: Path,
+        vrs_path: Path,
     ) -> CorrespondedImuReadings:
         """Helper which takes as input:
 
@@ -66,6 +67,8 @@ class CorrespondedImuReadings(TensorDataclass):
 
         (3) Path to closed_loop_trajectory.csv for timestamp mapping.
 
+        (4) VRS path for device-to-UTC timestamp conversion.
+
         We then output a data structure that has IMU readings for each target timestamp.
         """
 
@@ -75,13 +78,13 @@ class CorrespondedImuReadings(TensorDataclass):
             csv_path = closed_loop_trajectory_csv_path[0]
         else:
             csv_path = closed_loop_trajectory_csv_path
-            
+
         trajectory_df = pd.read_csv(csv_path)
-        
+
         # Create mapping from tracking_timestamp_us to utc_timestamp_ns
         # tracking_timestamp_us is in microseconds, utc_timestamp_ns is in nanoseconds
         tracking_to_utc_mapping = {}
-        
+
         for _, row in trajectory_df.iterrows():
             utc_ns = row['utc_timestamp_ns']
             tracking_us = row['tracking_timestamp_us']
@@ -89,6 +92,19 @@ class CorrespondedImuReadings(TensorDataclass):
 
         with open(imu_readings_pkl_path, "rb") as f:
             imu_out = cast(SavedImuOutputs, pickle.load(f))
+
+        # Convert device timestamps to real UTC via VRS provider.
+        if tracking_to_utc_mapping:
+            from projectaria_tools.core import data_provider
+            from projectaria_tools.core.sensor_data import TimeSyncMode
+            provider = data_provider.create_vrs_data_provider(str(vrs_path))
+            tracking_to_utc_mapping = {
+                k: provider.convert_from_device_time_to_synctime_ns(
+                    int(k * 1000), TimeSyncMode.UTC
+                )
+                for k in tracking_to_utc_mapping
+            }
+            print(f"[IMU] Converted device timestamps to UTC via VRS")
         
         est_fps = len(imu_out) / (
             (max(imu_out.keys()) - min(imu_out.keys())) / 1e9

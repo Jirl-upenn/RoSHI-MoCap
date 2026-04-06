@@ -115,10 +115,11 @@ def main(args: Args) -> None:
     # Get temporally corresponded IMU readings.
     if traj_paths.imu_readings_pkl is not None:
         print("--IMU available--")
-        imu_readings = CorrespondedImuReadings.load(    
+        imu_readings = CorrespondedImuReadings.load(
             traj_paths.imu_readings_pkl,
             pose_timestamps_sec,
             traj_paths.closed_loop_trajectory_csv,
+            vrs_path=traj_paths.vrs_file,
         ).to(device)
         print("++Loaded IMU readings++\n")
     else:
