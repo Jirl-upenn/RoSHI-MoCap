@@ -93,7 +93,6 @@ class Args:
     """RoSHI prediction CSV. Auto-discovered from <session>/roshi/ if None."""
 
     show_imu: bool = True
-    show_sam3d: bool = True
     show_egoallo: bool = False
     """Enable EgoAllo predictions (use --show-egoallo to enable)."""
 
@@ -259,14 +258,13 @@ def main(args: Args) -> None:
         args.show_imu = False
 
     # ── Load ground truth ───────────────────────────────────────────────────
-    gt = None
-    if args.show_sam3d:
-        gt = _load_sam3d(session)
-        if gt is None:
-            print("SAM-3D data not found — skipping")
-            args.show_sam3d = False
-        else:
-            print(f"Loaded SAM-3D ({len(gt.frame_id_to_index)} frames)")
+    show_sam3d = True
+    gt = _load_sam3d(session)
+    if gt is None:
+        print("SAM-3D data not found — skipping")
+        show_sam3d = False
+    else:
+        print(f"Loaded SAM-3D ({len(gt.frame_id_to_index)} frames)")
 
     # ── Load RoSHI predictions ────────────────────────────────────────────────
     roshi_dict, roshi_t = None, []
@@ -387,7 +385,10 @@ def main(args: Args) -> None:
     mesh_handles = {}
     active_methods = []
     for name, cfg in METHODS.items():
-        enabled = getattr(args, f"show_{name}", False)
+        if name == "sam3d":
+            enabled = show_sam3d
+        else:
+            enabled = getattr(args, f"show_{name}", False)
         if not enabled:
             continue
         active_methods.append(name)
@@ -491,7 +492,7 @@ def main(args: Args) -> None:
         if args.show_imu:
             results["imu"] = _compute_imu_pose(fi)
 
-        if args.show_sam3d and gt is not None and frame_id >= 0:
+        if show_sam3d and gt is not None and frame_id >= 0:
             gidx = gt.index_of(frame_id)
             if gidx is not None:
                 gt_local = gt.joint_rotations_local[gidx]
@@ -502,7 +503,7 @@ def main(args: Args) -> None:
                 results["sam3d"] = (v, j)
             else:
                 results["sam3d"] = None
-        elif args.show_sam3d:
+        elif show_sam3d:
             results["sam3d"] = None
 
         if args.show_roshi and roshi_dict:
