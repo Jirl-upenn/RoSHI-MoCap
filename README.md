@@ -1,6 +1,6 @@
 # RoSHI: A Versatile Robot-oriented Suit for Human Data In-the-Wild
 
-[Project Page](https://roshi-mocap.github.io/) | [Documentation](https://roshi-mocap.github.io/documentation/) | [RoSHI-App](https://github.com/Jirl-upenn/RoSHI-App)
+[Project Page](https://roshi-mocap.github.io/) | [Documentation](https://roshi-mocap.github.io/documentation/) | [RoSHI-App](https://github.com/Jirl-upenn/RoSHI-App) | [RoSHI-Hardware](https://github.com/Jirl-upenn/RoSHI-Hardware)
 
 ## Quick Start
 
@@ -45,3 +45,4 @@ RoSHI-MoCap/
 ## Related Repositories
 
 - [RoSHI-App](https://github.com/Jirl-upenn/RoSHI-App) — iOS companion app for video recording with AprilTag detection
+- [RoSHI-Hardware](https://github.com/Jirl-upenn/RoSHI-Hardware) — Hardware design files, 3D-printable enclosures, BOM, and ESP32 firmware for wireless IMU trackers
