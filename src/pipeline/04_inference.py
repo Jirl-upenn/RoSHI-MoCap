@@ -9,6 +9,8 @@ import torch
 import viser
 import yaml
 
+from scipy.spatial.transform import Rotation
+
 from egoallo import fncsmpl, fncsmpl_extensions
 from egoallo.data.aria_mps import load_point_cloud_and_find_ground
 from egoallo.guidance_optimizer_jax import GuidanceMode
@@ -24,6 +26,63 @@ from egoallo.inference_utils import (
 from egoallo.sampling import run_sampling_with_stitching
 from egoallo.transforms import SE3, SO3
 from egoallo.vis_helpers import visualize_traj_and_hand_detections
+
+
+_JOINT_ANGLE_LIMITS: dict[int, dict[str, float]] = {
+    # body_quats index → {axis: max_abs_radians}
+    # Lower body only
+    3: {"x_min": 0.0, "y": np.radians(5),  "z": np.radians(10)},    # L_knee (hinge, no hyperextension)
+    4: {"x_min": 0.0, "y": np.radians(5),  "z": np.radians(10)},    # R_knee (hinge, no hyperextension)
+    6: {"y": np.radians(25), "z": np.radians(20)},    # L_ankle
+    7: {"y": np.radians(25), "z": np.radians(20)},    # R_ankle
+}
+
+
+def clamp_joint_angles(body_quats: np.ndarray) -> np.ndarray:
+    """Hard-clamp joint Euler Y/Z angles to biomechanical limits.
+
+    Args:
+        body_quats: (..., 21, 4) wxyz quaternions.
+
+    Returns:
+        Clamped quaternions with the same shape.
+    """
+    out = body_quats.copy()
+    leading = body_quats.shape[:-2]  # e.g. (samples, T)
+    flat = out.reshape(-1, 21, 4)
+
+    for joint_idx, limits in _JOINT_ANGLE_LIMITS.items():
+        q_wxyz = flat[:, joint_idx]                     # (N, 4)
+        q_xyzw = q_wxyz[:, [1, 2, 3, 0]]
+        euler = Rotation.from_quat(q_xyzw).as_euler("XYZ", degrees=False)  # (N, 3)
+
+        clamped = False
+        if "x_min" in limits:
+            x_min = limits["x_min"]
+            new_x = np.maximum(euler[:, 0], x_min)
+            if not np.allclose(new_x, euler[:, 0]):
+                clamped = True
+            euler[:, 0] = new_x
+        if "y" in limits:
+            lim = limits["y"]
+            new_y = np.clip(euler[:, 1], -lim, lim)
+            if not np.allclose(new_y, euler[:, 1]):
+                clamped = True
+            euler[:, 1] = new_y
+        if "z" in limits:
+            lim = limits["z"]
+            new_z = np.clip(euler[:, 2], -lim, lim)
+            if not np.allclose(new_z, euler[:, 2]):
+                clamped = True
+            euler[:, 2] = new_z
+
+        if clamped:
+            r = Rotation.from_euler("XYZ", euler)
+            q_xyzw_new = r.as_quat()                   # (N, 4) xyzw
+            flat[:, joint_idx] = q_xyzw_new[:, [3, 0, 1, 2]]  # back to wxyz
+
+    out = flat.reshape(*leading, 21, 4)
+    return out
 
 
 @dataclasses.dataclass
@@ -193,15 +252,22 @@ def main(args: Args) -> None:
         Ts_world_root = fncsmpl_extensions.get_T_world_root_from_cpf_pose(
             posed, Ts_world_cpf[..., 1:, :]
         )
+
+        body_quats_raw = posed.local_quats[..., :21, :].numpy(force=True)
+        body_quats_clamped = clamp_joint_angles(body_quats_raw)
+        n_changed = int(np.any(~np.isclose(body_quats_raw, body_quats_clamped), axis=-1).sum())
+        if n_changed:
+            print(f"Joint-limit clamp adjusted {n_changed} joint-frames")
+
         print(f"Saving to {out_path}...", end="")
         np.savez(
             out_path,
             Ts_world_cpf=Ts_world_cpf[1:, :].numpy(force=True),
             Ts_world_root=Ts_world_root.numpy(force=True),
-            body_quats=posed.local_quats[..., :21, :].numpy(force=True),
+            body_quats=body_quats_clamped,
             left_hand_quats=posed.local_quats[..., 21:36, :].numpy(force=True),
             right_hand_quats=posed.local_quats[..., 36:51, :].numpy(force=True),
-            contacts=traj.contacts.numpy(force=True),  # Sometimes we forgot this...
+            contacts=traj.contacts.numpy(force=True),
             betas=traj.betas.numpy(force=True),
             frame_nums=np.arange(args.start_index, args.start_index + args.traj_length),
             timestamps_ns=(np.array(pose_timestamps_sec) * 1e9).astype(np.int64),

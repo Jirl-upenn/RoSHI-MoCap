@@ -185,6 +185,9 @@ class JaxGuidanceParams:
     imu_body_prior_weight: float = 0.1
     imu_body_smoothness_weight: float = 10.0
 
+    # Joint angle limit weights.
+    joint_limit_weight: float = 50.0
+
     # Optimization parameters.
     lambda_initial: float = 0.1
     max_iters: jdc.Static[int] = 50
@@ -880,6 +883,40 @@ def _optimize(
                     guidance_params.aria_wrist_ori_weight * ori_cost,
                 ]
             )
+
+    # Joint angle limit cost: penalise biomechanically impossible rotations.
+    # SMPL-H 21-joint body indices (0-based, root excluded):
+    #   Lower body: 3=L_knee, 4=R_knee, 6=L_ankle, 7=R_ankle
+    #   Upper body: 2=spine1, 5=spine2, 8=spine3, 11=neck, 14=head,
+    #               17=L_elbow, 18=R_elbow
+
+    # Lower body — strict limits
+    _KNEE_IDX = jnp.array([3, 4])
+    _ANKLE_IDX = jnp.array([6, 7])
+    _KNEE_Y_LIMIT = 0.087   # ~5 deg  — valgus/varus
+    _KNEE_Z_LIMIT = 0.175   # ~10 deg — int/ext rotation
+    _ANKLE_Y_LIMIT = 0.436  # ~25 deg — inv/eversion
+    _ANKLE_Z_LIMIT = 0.349  # ~20 deg — int/ext rotation
+
+    @cost_with_args(
+        _SmplhBodyPosesVar(jnp.arange(timesteps)),
+    )
+    def joint_limit_cost(
+        vals: jaxls.VarValues,
+        body_pose: _SmplhBodyPosesVar,
+    ) -> jax.Array:
+        log_map = jaxlie.SO3(vals[body_pose]).log()  # (21, 3)
+
+        # Penalise knee hyperextension (negative X rotation)
+        knee_x_hyperext = jnp.maximum(-log_map[_KNEE_IDX, 0], 0.0)
+        knee_y = jnp.maximum(jnp.abs(log_map[_KNEE_IDX, 1]) - _KNEE_Y_LIMIT, 0.0)
+        knee_z = jnp.maximum(jnp.abs(log_map[_KNEE_IDX, 2]) - _KNEE_Z_LIMIT, 0.0)
+        ankle_y = jnp.maximum(jnp.abs(log_map[_ANKLE_IDX, 1]) - _ANKLE_Y_LIMIT, 0.0)
+        ankle_z = jnp.maximum(jnp.abs(log_map[_ANKLE_IDX, 2]) - _ANKLE_Z_LIMIT, 0.0)
+
+        return guidance_params.joint_limit_weight * jnp.concatenate([
+            knee_x_hyperext, knee_y, knee_z, ankle_y, ankle_z,
+        ])
 
     # Per-frame regularization cost.
     @cost_with_args(
