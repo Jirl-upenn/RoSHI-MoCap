@@ -13,3 +13,9 @@ rm egoallo_checkpoint_april13.zip
 gdown https://drive.google.com/file/d/14zQ95NYxL4XIT7KIlFgAYTPCRITWxQqu/view?usp=drive_link --fuzzy
 unzip egoallo_example_trajectories.zip
 rm egoallo_example_trajectories.zip
+
+# evaluation_data.zip (27 MB) -- OptiTrack ground truth + per-method predictions
+mkdir -p evaluation/data
+gdown https://drive.google.com/file/d/1I0FfBCEsV5LmAtGimnHunU5VQih4-LVQ/view?usp=sharing --fuzzy
+unzip evaluation_data.zip -d evaluation/data/
+rm evaluation_data.zip

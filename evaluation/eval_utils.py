@@ -15,10 +15,6 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
-from rosbags.rosbag1 import Reader
-from rosbags.typesys import Stores, get_typestore
-
-_ts = get_typestore(Stores.ROS1_NOETIC)
 
 # Ensure repo root is on sys.path for utils.sync_utils
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -121,6 +117,13 @@ def _yup_quat_to_zup(quat_xyzw: np.ndarray) -> np.ndarray:
 
 
 def load_optitrack_bag(bag_path: Path) -> OptiTrackBag:
+    # Imported lazily so that scoring the released NPZ bundle does not require
+    # the ROS bag stack.
+    from rosbags.rosbag1 import Reader
+    from rosbags.typesys import Stores, get_typestore
+
+    _ts = get_typestore(Stores.ROS1_NOETIC)
+
     body_msgs, cam_msgs, box_msgs = {}, {}, {}
     object_label = "box"
     with Reader(bag_path) as reader:
