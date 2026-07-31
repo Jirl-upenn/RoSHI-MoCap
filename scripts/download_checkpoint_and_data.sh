@@ -15,7 +15,9 @@ unzip egoallo_example_trajectories.zip
 rm egoallo_example_trajectories.zip
 
 # evaluation_data.zip (27 MB) -- OptiTrack ground truth + per-method predictions
+# Browse at https://upenn.box.com/v/roshi-processed-data
 mkdir -p evaluation/data
-gdown https://drive.google.com/file/d/1I0FfBCEsV5LmAtGimnHunU5VQih4-LVQ/view?usp=sharing --fuzzy
+curl -L -o evaluation_data.zip \
+  "https://upenn.app.box.com/index.php?rm=box_download_shared_file&shared_name=f7wch1ug7742p0betqehr5ic955cryxt&file_id=f_2380790039349"
 unzip evaluation_data.zip -d evaluation/data/
 rm evaluation_data.zip
