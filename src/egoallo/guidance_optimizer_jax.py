@@ -44,11 +44,16 @@ def do_guidance_optimization(
     aria_all_hand_detections: None | CorrespondedAriaHandAllPoseWrtWorld,
     imu_readings: None | CorrespondedImuReadings,
     verbose: bool,
+    guidance_params: JaxGuidanceParams | None = None,
 ) -> tuple[network.EgoDenoiseTraj, dict]:
-    """Run an optimizer to apply foot contact constraints."""
+    """Run an optimizer to apply foot contact constraints.
+
+    `guidance_params` overrides `JaxGuidanceParams.defaults(guidance_mode, phase)`.
+    """
 
     assert traj.hand_rotmats is not None
-    guidance_params = JaxGuidanceParams.defaults(guidance_mode, phase)
+    if guidance_params is None:
+        guidance_params = JaxGuidanceParams.defaults(guidance_mode, phase)
 
     start_time = time.time()
     quats, debug_info = _optimize_vmapped(
